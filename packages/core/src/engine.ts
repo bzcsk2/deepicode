@@ -1,12 +1,9 @@
-// ReasonixEngine — implements CoreEngine interface
-// Wraps our three-region context partitioning + oh-my-pi streamSimple
-
 import { streamSimple } from "./vendor/pi.js"
 import type { Model, SimpleStreamOptions } from "./vendor/pi.js"
 import type { DeepicodeConfig } from "./config.js"
 import { buildPiModel } from "./config.js"
 import { ContextManager } from "./context/manager.js"
-import type { AgentEvent, ChatMessage, ToolCall, ToolSpec } from "./types.js"
+import type { ChatMessage, ToolCall, ToolSpec } from "./types.js"
 import type { CoreEngine, AgentConfig, AgentTool, LoopEvent, AgentState, ToolContext, SessionStats } from "./interface.js"
 
 let sessionCounter = 0
@@ -151,27 +148,44 @@ export class ReasonixEngine implements CoreEngine {
               tool_calls: toolCalls,
             })
 
+            const abortController = new AbortController()
+
+            const exclusive: AgentTool[] = []
+            const shared: AgentTool[] = []
+            for (const tc of toolCalls) {
+              const handler = this.tools.get(tc.function.name)
+              if (!handler) continue
+              if (handler.concurrency === "exclusive") exclusive.push(handler)
+              else shared.push(handler)
+            }
+
             for (const tc of toolCalls) {
               this.stats.toolCalls++
               yield { role: "tool_start", toolName: tc.function.name, toolCallIndex: 0 }
 
+              const handler = this.tools.get(tc.function.name)
+              const toolCtx: ToolContext = { cwd: process.cwd(), sessionId: this.sessionId, signal: abortController.signal }
+
               try {
-                const args = JSON.parse(tc.function.arguments) as Record<string, unknown>
-                const handler = this.tools.get(tc.function.name)
-                const toolCtx: ToolContext = { cwd: process.cwd(), sessionId: this.sessionId }
-                if (handler) {
-                  const result = await handler.execute(args, toolCtx)
-                  this.ctx.log.append({
-                    role: "tool", tool_call_id: tc.id,
-                    content: result, name: tc.function.name,
-                  })
-                  yield { role: "tool", toolName: tc.function.name, content: result }
-                } else {
+                if (!handler) {
                   const err = JSON.stringify({ error: `Unknown tool: ${tc.function.name}` })
                   this.ctx.log.append({ role: "tool", tool_call_id: tc.id, content: err, name: tc.function.name })
                   yield { role: "error", content: err, severity: "error" }
+                  continue
                 }
+
+                const args = JSON.parse(tc.function.arguments) as Record<string, unknown>
+                const result = await handler.execute(args, toolCtx)
+                this.ctx.log.append({
+                  role: "tool", tool_call_id: tc.id,
+                  content: result, name: tc.function.name,
+                })
+                yield { role: "tool", toolName: tc.function.name, content: result }
               } catch (e) {
+                if (abortController.signal.aborted) {
+                  yield { role: "status", content: "tool_cancelled" }
+                  return
+                }
                 const err = JSON.stringify({ error: String(e) })
                 this.ctx.log.append({ role: "tool", tool_call_id: tc.id, content: err, name: tc.function.name })
                 yield { role: "error", content: err, severity: "error" }

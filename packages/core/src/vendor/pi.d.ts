@@ -96,11 +96,10 @@ export interface Model {
   compat?: Record<string, unknown>                                 // provider 兼容性参数
 }
 
-// Context：请求上下文
 export interface Context {
-  systemPrompt?: string   // 系统提示词（可选）
-  messages: unknown[]     // 消息列表
-  tools?: unknown[]       // 工具描述列表（可选）
+  systemPrompt?: string[]
+  messages: unknown[]
+  tools?: unknown[]
 }
 
 // SimpleStreamOptions：流式请求的配置选项

@@ -1,6 +1,3 @@
-// CoreEngine interface — shared contract between core (ReasonixEngine) and shell (oh-my-pi).
-// Design doc reference: §10.1 核心层与壳层接口
-
 import type { ChatMessage, ToolSpec, Usage } from "./types.js"
 
 /* ── LoopEvent — core yields these, shell consumes them ── */
@@ -27,19 +24,29 @@ export interface LoopEvent {
   metadata?: Record<string, unknown>
 }
 
+/* ── Permission tiers ── */
+
+export type ToolTier = "read" | "write" | "exec"
+
 /* ── AgentTool — every tool must implement this ── */
+
+export type ToolConcurrency = "shared" | "exclusive"
 
 export interface AgentTool {
   name: string
   description: string
   parameters: Record<string, unknown>
-  isConcurrencySafe: boolean
+  concurrency: ToolConcurrency
+  approval: ToolTier
   execute(args: Record<string, unknown>, context: ToolContext): Promise<ToolResult>
 }
+
+/* ── Tool execution context ── */
 
 export interface ToolContext {
   cwd: string
   sessionId: string
+  signal?: AbortSignal
 }
 
 export interface ToolResult {

@@ -19,11 +19,8 @@ export class AppendOnlyLog {
     this.entries.push(message)
   }
 
-  // 批量追加多条消息到日志末尾
   appendMany(messages: ChatMessage[]): void {
-    for (const m of messages) {
-      this.entries.push(m)
-    }
+    this.entries.push(...messages)
   }
 
   // 获取日志消息的只读视图

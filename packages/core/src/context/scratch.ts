@@ -14,9 +14,8 @@ export class VolatileScratch {
   // 内部存储：当前轮的临时消息列表
   private entries: ChatMessage[] = []
 
-  // 批量设置暂存区消息（覆盖式写入）
   setMessages(msgs: ChatMessage[]): void {
-    this.entries = msgs
+    this.entries = [...msgs]
   }
 
   // 追加单条消息到暂存区
