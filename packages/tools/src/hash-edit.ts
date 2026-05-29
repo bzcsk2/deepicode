@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto"
 import { createReadStream, createWriteStream } from "node:fs"
-import { rename, unlink } from "node:fs/promises"
+import { stat, rename, unlink, chmod, mkdir } from "node:fs/promises"
 import { dirname } from "node:path"
-import { mkdir } from "node:fs/promises"
 
 export interface HashEditResult {
   replacedCount: number
@@ -13,6 +12,15 @@ export interface HashEditResult {
 // Internally uses hashing to avoid expensive repeated string comparisons for large files.
 export async function hashAnchoredReplaceOnce(filePath: string, oldString: string, newString: string): Promise<HashEditResult | null> {
   if (!oldString) return null
+
+  // Get original file permissions so we don't lose executable bits when replacing
+  let originalMode: number | undefined
+  try {
+    const s = await stat(filePath)
+    originalMode = s.mode
+  } catch {
+    // If file doesn't exist, we can't edit it anyway, but we'll let read stream fail
+  }
 
   const tmpPath = `${filePath}.deepicode_tmp_${Date.now()}`
   await mkdir(dirname(tmpPath), { recursive: true })
@@ -30,13 +38,6 @@ export async function hashAnchoredReplaceOnce(filePath: string, oldString: strin
 
   for await (const chunk of reader as any as AsyncIterable<string>) {
     buf += chunk
-    // Keep buffer bounded to avoid OOM: retain a tail that could still match.
-    const maxTail = Math.max(oldString.length, 8192)
-    while (buf.length > maxTail * 2) {
-      const cut = buf.length - maxTail * 2
-      await write(buf.slice(0, cut))
-      buf = buf.slice(cut)
-    }
 
     if (!replaced) {
       const idx = buf.indexOf(oldString)
@@ -46,6 +47,14 @@ export async function hashAnchoredReplaceOnce(filePath: string, oldString: strin
         buf = buf.slice(idx + oldString.length)
         replaced = true
       }
+    }
+
+    // Keep buffer bounded to avoid OOM: retain a tail that could still match.
+    const maxTail = Math.max(oldString.length, 8192)
+    while (buf.length > maxTail * 2) {
+      const cut = buf.length - maxTail * 2
+      await write(buf.slice(0, cut))
+      buf = buf.slice(cut)
     }
   }
 
@@ -57,6 +66,11 @@ export async function hashAnchoredReplaceOnce(filePath: string, oldString: strin
 
   await write(buf)
   await new Promise<void>((resolve) => writer.end(resolve))
+  
+  if (originalMode !== undefined) {
+    await chmod(tmpPath, originalMode).catch(() => {}) // preserve permissions
+  }
+  
   await rename(tmpPath, filePath)
   return { replacedCount: 1, method: "hash_anchored" }
 }
@@ -64,4 +78,3 @@ export async function hashAnchoredReplaceOnce(filePath: string, oldString: strin
 function sha256(s: string): string {
   return createHash("sha256").update(s).digest("hex")
 }
-

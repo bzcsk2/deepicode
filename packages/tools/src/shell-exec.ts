@@ -1,15 +1,16 @@
 import { spawn } from "node:child_process"
+import * as os from "node:os"
 import type { AgentTool } from "../../core/src/interface.js"
 
 const DENY_PATTERNS = [
-  /^rm\s+-rf\s+\/$/,
-  /^sudo\b/,
-  /^mkfs\b/,
-  /^dd\s+if=/,
-  /^chmod\s+-R\s+777\s+\/$/,
-  /^dd\b/,
-  /^fdisk\b/,
-  /^mkfs\.\w+\b/,
+  /\brm\s+(?:-[A-Za-z]*r[A-Za-z]*\s+.*\/\*|.*-[A-Za-z]*r[A-Za-z]*\s+\/)/, // catch rm -rf / or rm -rf /*
+  /\bsudo\b/,
+  /\bmkfs\b/,
+  /\bdd\s+if=/,
+  /\bchmod\s+-R\s+777\s+\//,
+  /\bdd\b/,
+  /\bfdisk\b/,
+  /\bmkfs\.\w+\b/,
 ]
 
 function isDenied(command: string): string | null {
@@ -63,11 +64,26 @@ async function runBash(command: string, cwd: string, timeoutMs: number, maxChars
   timedOut: boolean
 }> {
   return await new Promise((resolve, reject) => {
-    const child = spawn("bash", ["-lc", command], { cwd })
+    const isWindows = os.platform() === "win32"
+    // Use detached to create a process group on Unix, so we can kill children (zombies)
+    const child = spawn("bash", ["-lc", command], { cwd, detached: !isWindows })
+    
     let stdout = ""
     let stderr = ""
     let timedOut = false
     let done = false
+
+    const killChild = () => {
+      try {
+        if (!isWindows && child.pid) {
+          process.kill(-child.pid, "SIGKILL")
+        } else {
+          child.kill("SIGKILL")
+        }
+      } catch {
+        child.kill("SIGKILL")
+      }
+    }
 
     const finish = (exitCode: number) => {
       if (done) return
@@ -84,20 +100,20 @@ async function runBash(command: string, cwd: string, timeoutMs: number, maxChars
 
     const timer = setTimeout(() => {
       timedOut = true
-      child.kill("SIGKILL")
+      killChild()
       finish(124)
     }, timeoutMs)
 
     if (signal) {
       if (signal.aborted) {
         clearTimeout(timer)
-        child.kill("SIGKILL")
+        killChild()
         finish(130)
         return
       }
       signal.addEventListener("abort", () => {
         clearTimeout(timer)
-        child.kill("SIGKILL")
+        killChild()
         finish(130)
       }, { once: true })
     }
@@ -119,4 +135,3 @@ function truncate(s: string, max: number): string {
   if (s.length <= max) return s
   return s.slice(0, max)
 }
-

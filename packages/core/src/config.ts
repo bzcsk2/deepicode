@@ -15,7 +15,7 @@ export interface DeepicodeConfig {
 
 function loadApiKeyFromProjectFile(): string | undefined {
   // workspace 默认位置：/vol4/Agent/deepicode/api-key
-  // 内容示例：export DEEPSEEK_API_KEY="sk-..."
+  // 内容示例：export DEEPSEEK_API_KEY="sk-..." 或纯文本 sk-...
   try {
     const p = resolve(process.cwd(), "api-key")
     const raw = readFileSync(p, "utf-8")
@@ -24,8 +24,17 @@ function loadApiKeyFromProjectFile(): string | undefined {
       raw.match(/^\s*export\s+DEEPSEEK_API_KEY\s*=\s*'([^']+)'\s*$/m) ??
       raw.match(/^\s*DEEPSEEK_API_KEY\s*=\s*"([^"]+)"\s*$/m) ??
       raw.match(/^\s*DEEPSEEK_API_KEY\s*=\s*'([^']+)'\s*$/m)
+    
     const key = match?.[1]?.trim()
-    return key ? key : undefined
+    if (key) return key
+    
+    // Fallback: 如果没有匹配到 export 格式，但文件内容似乎是一个裸的 sk- key
+    const bareKey = raw.trim()
+    if (bareKey.startsWith("sk-")) {
+      return bareKey
+    }
+    
+    return undefined
   } catch {
     return undefined
   }

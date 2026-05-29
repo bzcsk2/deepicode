@@ -25,13 +25,17 @@ export class AsyncSessionWriter {
   private path: string
   private queue: string[] = []
   private flushing = false
+  private initPromise?: Promise<void>
 
   constructor(path: string) {
     this.path = path
   }
 
   async init(): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true })
+    if (!this.initPromise) {
+      this.initPromise = mkdir(dirname(this.path), { recursive: true }).then(() => {})
+    }
+    await this.initPromise
   }
 
   enqueue(record: SessionRecord): void {
@@ -43,6 +47,9 @@ export class AsyncSessionWriter {
     if (this.flushing) return
     this.flushing = true
     try {
+      if (this.initPromise) {
+        await this.initPromise.catch(() => {}) // wait for init to finish (or fail)
+      }
       while (this.queue.length > 0) {
         const chunk = this.queue.splice(0, 50).join("")
         await appendFile(this.path, chunk, "utf-8")
@@ -51,7 +58,9 @@ export class AsyncSessionWriter {
       // best-effort: swallow write errors silently
     } finally {
       this.flushing = false
+      if (this.queue.length > 0) {
+        void this.flushSoon()
+      }
     }
   }
 }
-

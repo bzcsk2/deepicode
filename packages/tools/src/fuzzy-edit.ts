@@ -5,42 +5,59 @@ export interface FuzzyEditResult {
 }
 
 export function fuzzyReplaceOnce(haystack: string, needle: string, replacement: string): FuzzyEditResult | null {
-  const passes: Array<{ name: string; transform: (s: string) => string; mapBack?: undefined }> = [
-    { name: "exact", transform: (s) => s },
-    { name: "trimRightLines", transform: trimRightLines },
-    { name: "normalizeWhitespace", transform: normalizeWhitespace },
-    { name: "normalizeIndent", transform: normalizeIndent },
-  ]
+  // Pass 1: exact match
+  let idx = haystack.indexOf(needle)
+  if (idx >= 0) {
+    return { edited: haystack.slice(0, idx) + replacement + haystack.slice(idx + needle.length), replacedCount: 1, method: "exact" }
+  }
 
-  for (const pass of passes) {
-    const h = pass.transform(haystack)
-    const n = pass.transform(needle)
-    const idx = h.indexOf(n)
-    if (idx < 0) continue
-
-    // mapping back is hard; keep fuzzy fallback simple by only using transforms that preserve length-ish.
-    // For these passes we still apply replacement on original via exact search when possible.
-    if (pass.name === "exact") {
-      return { edited: haystack.slice(0, idx) + replacement + haystack.slice(idx + needle.length), replacedCount: 1, method: pass.name }
+  // Pass 2: trimmed variants (trim entire needle, or trim right sides of lines)
+  const trimmedNeedle = needle.trim()
+  if (trimmedNeedle) {
+    let j = haystack.indexOf(trimmedNeedle)
+    if (j >= 0) {
+      return { edited: haystack.slice(0, j) + replacement + haystack.slice(j + trimmedNeedle.length), replacedCount: 1, method: "trimmed_full" }
     }
+  }
 
-    // For fuzzy passes, fall back to searching original needle trimmed variants.
-    const altNeedles = generateAltNeedles(needle)
-    for (const alt of altNeedles) {
-      const j = haystack.indexOf(alt)
-      if (j >= 0) return { edited: haystack.slice(0, j) + replacement + haystack.slice(j + alt.length), replacedCount: 1, method: pass.name }
+  const rightTrimmed = trimRightLines(needle)
+  if (rightTrimmed && rightTrimmed !== needle) {
+    let j = haystack.indexOf(rightTrimmed)
+    if (j >= 0) {
+      return { edited: haystack.slice(0, j) + replacement + haystack.slice(j + rightTrimmed.length), replacedCount: 1, method: "trimmed_lines" }
     }
+  }
+
+  // Pass 3: Flexible whitespace match using regex
+  // This handles normalizeWhitespace and normalizeIndent properly by locating the exact bounds in original haystack
+  try {
+    const escaped = escapeRegExp(needle.trim())
+    // Replace any sequence of whitespace in the escaped string with \s+ 
+    // Note: escapeRegExp will escape spaces as '\ ' if we are not careful, but our escapeRegExp doesn't escape spaces.
+    const flexSpaceRegexStr = escaped.replace(/\s+/g, '\\s+')
+    
+    // Only proceed if it actually creates a meaningful pattern
+    if (flexSpaceRegexStr && flexSpaceRegexStr.length > 0) {
+      const flexRegex = new RegExp(flexSpaceRegexStr)
+      const match = haystack.match(flexRegex)
+      if (match && match.index !== undefined) {
+        return {
+          edited: haystack.slice(0, match.index) + replacement + haystack.slice(match.index + match[0].length),
+          replacedCount: 1,
+          method: "flexible_whitespace"
+        }
+      }
+    }
+  } catch (e) {
+    // Ignore regex compilation errors
   }
 
   return null
 }
 
-function generateAltNeedles(needle: string): string[] {
-  const alts = new Set<string>()
-  alts.add(needle)
-  alts.add(needle.trim())
-  alts.add(trimRightLines(needle))
-  return [...alts]
+function escapeRegExp(string: string): string {
+  // Escapes regex special characters. Doesn't escape spaces.
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function trimRightLines(s: string): string {
@@ -49,15 +66,3 @@ function trimRightLines(s: string): string {
     .map((l) => l.replace(/\s+$/u, ""))
     .join("\n")
 }
-
-function normalizeWhitespace(s: string): string {
-  return s.replace(/[ \t]+/gu, " ").replace(/\r\n/gu, "\n")
-}
-
-function normalizeIndent(s: string): string {
-  return s
-    .split("\n")
-    .map((l) => l.replace(/^\s+/u, ""))
-    .join("\n")
-}
-
