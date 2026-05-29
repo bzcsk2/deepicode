@@ -121,6 +121,11 @@
 - `ImmutablePrefix.cacheKey` 使用 SHA-256 稳定 hash。
 - `AppendOnlyLog` / `VolatileScratch` / `ImmutablePrefix` 对外返回防御性拷贝，避免外部引用污染内部状态。
 
+额外完成：
+
+- prefix fingerprint 覆盖 toolSpecs 和 fewShots（不限于 system prompt）
+- 单元测试覆盖 system / toolSpecs / fewShots 三类变化
+
 未完成：
 
 - 增量 token 统计旁路。

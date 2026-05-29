@@ -3,7 +3,7 @@ import { ImmutablePrefix } from "../src/context/immutable.js"
 import { AppendOnlyLog } from "../src/context/append-log.js"
 import { VolatileScratch } from "../src/context/scratch.js"
 import { ContextManager } from "../src/context/manager.js"
-import type { ChatMessage } from "../src/types.js"
+import type { ChatMessage, ToolSpec } from "../src/types.js"
 
 // === ImmutablePrefix 单元测试 ===
 describe("ImmutablePrefix", () => {
@@ -38,6 +38,53 @@ describe("ImmutablePrefix", () => {
     expect(msgs).toHaveLength(1)
     expect(msgs[0].role).toBe("system")
     expect(msgs[0].content).toBe("System prompt")
+  })
+
+  // 相同 toolSpecs 应产生相同 hash
+  it("should produce same hash for same toolSpecs", () => {
+    const a = new ImmutablePrefix()
+    const b = new ImmutablePrefix()
+    const specs: ToolSpec[] = [
+      { type: "function", function: { name: "bash", description: "Run a command", parameters: { type: "object" } } },
+    ]
+    a.build("You are an assistant.", specs)
+    b.build("You are an assistant.", specs)
+    expect(a.cacheKey).toBe(b.cacheKey)
+  })
+
+  // 不同 toolSpecs 应产生不同 hash
+  it("should produce different hash for different toolSpecs", () => {
+    const a = new ImmutablePrefix()
+    const b = new ImmutablePrefix()
+    a.build("You are an assistant.", [
+      { type: "function", function: { name: "bash", description: "Run a command", parameters: { type: "object" } } },
+    ])
+    b.build("You are an assistant.", [
+      { type: "function", function: { name: "read_file", description: "Read a file", parameters: { type: "object" } } },
+    ])
+    expect(a.cacheKey).not.toBe(b.cacheKey)
+  })
+
+  // 相同 fewShots 应产生相同 hash
+  it("should produce same hash for same fewShots", () => {
+    const a = new ImmutablePrefix()
+    const b = new ImmutablePrefix()
+    const shots: ChatMessage[] = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "hello" },
+    ]
+    a.build("System prompt", undefined, shots)
+    b.build("System prompt", undefined, shots)
+    expect(a.cacheKey).toBe(b.cacheKey)
+  })
+
+  // 不同 fewShots 应产生不同 hash
+  it("should produce different hash for different fewShots", () => {
+    const a = new ImmutablePrefix()
+    const b = new ImmutablePrefix()
+    a.build("System prompt", undefined, [{ role: "user", content: "hi" }])
+    b.build("System prompt", undefined, [{ role: "user", content: "hello" }])
+    expect(a.cacheKey).not.toBe(b.cacheKey)
   })
 })
 

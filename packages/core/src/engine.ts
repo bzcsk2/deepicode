@@ -91,6 +91,9 @@ export class ReasonixEngine implements CoreEngine {
         })
       }
 
+      // Rebuild prefix fingerprint with current tool specs (tool schema changes affect prefix-cache)
+      this.ctx.prefix.build(this.ctx.prefix.messages[0]?.content ?? "", toolSpecs)
+
       let turnCount = 0
       const maxTurns = 10
 
