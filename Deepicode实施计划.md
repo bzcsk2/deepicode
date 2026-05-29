@@ -56,16 +56,18 @@ deepicode/
 │   │   │   │   └── plan-agent.ts
 │   │   │   └── index.ts
 │   │   └── package.json
-│   ├── tui/                     # TUI 渲染层（待接入 Ink/React）
+│   ├── tui/                     # TUI 渲染层（基于 oh-my-pi 差分渲染引擎）
 │   │   ├── src/
-│   │   │   ├── App.tsx
+│   │   │   ├── tui.ts            # TUI 主类（extends Container）
 │   │   │   ├── components/
-│   │   │   │   ├── ChatView.tsx
-│   │   │   │   ├── ToolCallView.tsx
-│   │   │   │   ├── StrategyNotify.tsx
-│   │   │   │   ├── TokenEstimate.tsx
-│   │   │   │   └── DiffPreview.tsx
-│   │   │   └── index.tsx
+│   │   │   │   ├── chat-view.ts       # 消息列表 + 流式增量渲染
+│   │   │   │   ├── tool-call-view.ts  # 工具调用状态与结果
+│   │   │   │   ├── strategy-notify.ts # 四档位 CNY 成本卡片 + 倒计时
+│   │   │   │   ├── token-estimate.ts  # 实时 Token 用量面板
+│   │   │   │   ├── diff-preview.ts    # 代码变更预览
+│   │   │   │   ├── status-line.ts     # 状态栏
+│   │   │   │   └── input.ts           # 多行输入框
+│   │   │   └── bridge.ts        # AsyncGenerator<LoopEvent> → TUI 事件订阅桥接
 │   │   └── package.json
 │   ├── tools/                   # 工具层
 │   │   ├── src/
@@ -111,7 +113,7 @@ deepicode/
 | 缩写 | 来源 | 仓库地址 | 参考内容 | 实际关系 |
 |------|------|---------|---------|---------|
 | **RNX** | Reasonix | /vol4/Agent/DeepSeek-Reasonix | Cache-first 设计、repair pipeline、prefix-cache 优化思想 | 理念参考，代码全新 |
-| **OMP** | oh-my-pi | /vol4/Agent/oh-my-pi | Ink TUI 组件设计、Agent 状态管理模式 | 理念参考，`vendor/pi.d.ts` 仅保留类型存根 |
+| **OMP** | oh-my-pi | /vol4/Agent/oh-my-pi | TUI 差分渲染引擎、Component 接口、Agent 状态管理模式 | TUI 核心组件复制自 `packages/tui/`，其余代码全新 |
 | **CC** | Claude Code | /vol4/Agent/best-claude-code | StreamingToolExecutor 思路、Deny-first 权限规则、工具设计 | 理念参考 |
 | **OC** | OpenCode | /vol4/Agent/opencode | 9-Pass Fuzzy Edit、Stale-read validation、多 Agent 模式 | 理念参考 |
 
@@ -256,20 +258,51 @@ deepicode/
 
 ---
 
-## Phase 3：壳层增强
+## Phase 3：壳层增强 + TUI 接入
 
-**目标**：实现集中式状态管理、双模式事件系统、多 Agent 系统。
-**预计耗时**：1.5 周
+**目标**：实现集中式状态管理、双模式事件系统、多 Agent 系统，并基于 oh-my-pi TUI 引擎搭建终端界面。
+**预计耗时**：2 周
+
+### Step 3.0：从 oh-my-pi 复制 TUI 核心组件
+
+不跨仓库源码引用，只复制必要的核心文件到 `packages/tui/`：
+
+1. 复制 `packages/tui/src/tui.ts`（TUI 主类 + Container + 差分渲染引擎）
+2. 复制 `packages/tui/src/terminal.ts`（ProcessTerminal）
+3. 复制 `packages/tui/src/components/` 中的基础组件：`box.ts`、`text.ts`、`input.ts`、`markdown.ts`、`loader.ts`、`spacer.ts`
+4. 复制 `packages/tui/src/keys.ts`、`utils.ts`、`symbols.ts`、`keybindings.ts`
+5. 精简依赖：去掉 `@oh-my-pi/pi-natives`（Bun FFI）和 `@oh-my-pi/pi-utils`，用标准 Bun API 替代
+
+**TUI 技术选型理由**（对比 best-claude-code）：
+
+| 维度 | oh-my-pi TUI | best-claude-code (Ink fork) |
+|------|:---:|:---:|
+| 规模 | 17 文件 / ~11K 行 | 685+ 文件 / ~128K 行 |
+| 组件接口 | `render(width) → string[]`（同步） | React 组件 + JSX + hooks |
+| 运行时 | **Bun**（原生） | Node.js（React 19 + Yoga） |
+| 事件模型 | 订阅 → requestRender | Zustand → useSyncExternalStore → reconciler |
 
 ### Step 3.1：集中式状态管理
 1. 创建 `packages/shell/src/state.ts`。
 2. 声明式更新：`processEvents` 必须返回全新的 state 对象。
 
-### Step 3.2：双模式事件系统
+### Step 3.2：双模式事件系统 + TUI 桥接
 1. 创建 `packages/shell/src/events.ts`。
 2. 实现推模式 `EventStream` 与 Pub/Sub 模式 `EventBus`，桥接拉模式 Generator。
+3. 创建 `packages/tui/src/bridge.ts`：`AsyncGenerator<LoopEvent>` → TUI 事件订阅。
+4. TUI 组件通过 `subscribe(engine, onEvent)` 消费事件流，事件驱动 `requestRender()`。
 
-### Step 3.3：多 Agent 系统
+### Step 3.3：TUI 业务组件
+基于 oh-my-pi 的 `Component` 接口实现 deepicode 特有组件：
+1. `chat-view.ts` — 消息列表 + `assistant_delta` 流式增量追加 + 自动滚动
+2. `tool-call-view.ts` — `tool_start` / `tool` / `tool_progress` 状态展示
+3. `strategy-notify.ts` — 四档位 CNY 成本卡片 + 3 秒倒计时 + 方向键切换
+4. `token-estimate.ts` — 实时 Token 用量 + cache hit/miss 占比面板
+5. `diff-preview.ts` — 代码变更的行级差异展示
+6. `status-line.ts` — 底部状态栏（模型、token 用量、会话时长）
+7. `input.ts` — 多行输入框（支持粘贴、历史、Ctrl+C 中断）
+
+### Step 3.4：多 Agent 系统
 1. 创建 `packages/shell/src/agents/agent-config.ts`。
 2. 实现从 JSON/Markdown 加载 Build Agent 和 Plan Agent。
 3. 实现 Tab 键切换 Agent。Plan-to-Build 切换时将分析结论注入 `system-reminder`。
@@ -545,7 +578,8 @@ deepicode/
 | 决策点 | 选择 | 理由 | 影响范围 |
 |--------|------|------|---------|
 | 语言 | TypeScript | 用户已决定，oh-my-pi 和 Reasonix 都是 TS | 全局 |
-| 壳 | 自研 readline CLI | 轻量起步，后续可选接入 Ink/React TUI | shell/tui/cli |
+| TUI | oh-my-pi 差分渲染引擎 | 17 文件 / ~11K 行，同步 `render(width) → string[]` 接口，Bun 原生运行 | tui/ |
+| 壳 | 自研 readline CLI → oh-my-pi TUI | 先 readline 快速迭代，Phase 3 复制 oh-my-pi TUI 核心组件并实现业务组件 | shell/tui/cli |
 | 核 | 自研引擎（借鉴 Reasonix 理念） | Cache-first、repair、cost control 是核心竞争力 | core/* |
 | 运行时 | Bun | 原生 TypeScript 支持，更好的开发体验 | 全局 |
 | 首要增强 | Streaming Tool Executor | 真正的速度提升，Claude Code 核心优点 | streaming-executor.ts |
@@ -566,7 +600,7 @@ deepicode/
 | 风险 | 触发条件 | 应对策略 | 负责模块 |
 |------|---------|---------|---------|
 | DeepSeek API 字段变化 | API 升级 | 封装在 DeepSeekClient 内部，单点修改 | client.ts |
-| CLI 体验不足（readline 非 TUI） | 复杂交互场景 | 保留 CoreEngine 接口层，后续接入 Ink/React TUI | engine.ts → tui/ |
+| CLI 体验不足（readline 非 TUI） | 复杂交互场景 | Phase 3 复制 oh-my-pi TUI 核心组件，实现业务组件（ChatView 等） | engine.ts → tui/ |
 | Worker 线程兼容性 | Bun Worker 与 Node.js worker_threads API 存在差异 | 优先使用 Bun 原生 Worker API，必要时提供主线程 fallback | tokenizer-pool.ts |
 | JSON 假闭合防御失灵 | 模型输出代码块中的花括号 | 当前稳定优先策略（完整 tool call 后执行）已规避；改 eager dispatch 时需重新评估 | streaming-executor.ts |
 | Hash-anchored 编辑失败率高 | 哈希不匹配 | 9-pass fallback 兜底 | hash-edit.ts → fuzzy-edit.ts |

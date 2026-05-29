@@ -2,7 +2,8 @@ import type { ChatMessage } from "../types.js"
 import { AppendOnlyLog } from "./append-log.js"
 import { ImmutablePrefix } from "./immutable.js"
 import { VolatileScratch } from "./scratch.js"
-import { estimateTokens, getFoldDecision } from "./token-estimator.js"
+import { getFoldDecision } from "./token-estimator.js"
+import { TokenizerPool } from "./tokenizer-pool.js"
 import type { FoldDecision } from "./token-estimator.js"
 
 /**
@@ -31,19 +32,28 @@ export class ContextManager {
   // 上下文截断阈值：保留的最大对话轮数（按 user 消息计数），0 表示不截断
   private maxRounds: number
 
+  private tokenizer: TokenizerPool
+
   constructor(maxRounds = 20, private contextWindow = 128_000) {
     this.prefix = new ImmutablePrefix()
     this.log = new AppendOnlyLog()
     this.scratch = new VolatileScratch()
     this.maxRounds = maxRounds
+    this.tokenizer = new TokenizerPool()
   }
 
-  estimateTokens(): number {
-    return estimateTokens(this.buildMessages())
+  async estimateTokens(): Promise<number> {
+    return this.tokenizer.estimate(this.buildMessages())
   }
 
-  getFoldDecision(): FoldDecision {
-    return getFoldDecision(this.estimateTokens(), this.contextWindow)
+  async getFoldDecision(): Promise<FoldDecision> {
+    const used = await this.estimateTokens()
+    return getFoldDecision(used, this.contextWindow)
+  }
+
+  /** 释放 Worker 资源 */
+  shutdown(): void {
+    this.tokenizer.shutdown()
   }
 
   /** 组装完整的 messages 数组：prefix + log（截断后）+ scratch */

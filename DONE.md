@@ -6,7 +6,7 @@
 - `最小完成`：具备可用闭环，但未达到实施计划中的完整版要求。
 - `部分完成`：只完成子集能力，仍需后续补齐。
 
-最后更新：2026-05-30（ADVICE.md P1x3 + P2x3 全部修复）
+最后更新：2026-05-30（Phase 1 遗留三项全部完成）
 
 ## Phase 0：脚手架搭建
 
@@ -148,11 +148,16 @@
 
 ### Step 1.4 Tokenizer Worker Pool
 
-状态：未开始
+状态：完成（2026-05-30）
 
-- 尚未实现 `tokenizer-pool.ts`。
-- 尚未实现 worker 线程入口。
-- 尚未实现 Map-based O(1) 任务回收。
+- 新增 `packages/core/src/context/tokenizer-pool.ts`：
+  - Worker 线程管理（Bun `Worker` 封装）
+  - `Map<taskId, {resolve,reject}>` 实现 O(1) 任务调度
+  - 5 秒超时降级：Worker 挂起时自动回退主线程估算
+- 新增 `packages/core/src/context/tokenizer-worker.js`：
+  - CJK（1.5 chars/token）+ 标点（2 chars/token）+ ASCII（4 chars/token）细化估算
+- `ContextManager` 的 `estimateTokens()` / `getFoldDecision()` 升级为 async
+- 主线程 fallback：Worker 不可用时自动使用 CHARS_PER_TOKEN=4 近似估算
 
 ### Step 1.5 StreamingToolExecutor
 
@@ -180,31 +185,26 @@
 
 ### Step 1.6 Tool-call Repair 流水线
 
-状态：未开始
+状态：完成（2026-05-30）
 
-- 尚未实现 `repair.ts`。
-- 尚未实现 Scavenge / Truncation / Storm。
-- 尚未实现 repeat-loop guard。
+- 新增 `packages/core/src/context/repair.ts`：
+  - **Scavenge**（6 子策略）：提取 `{...}` 块、单引号→双引号、尾逗号清除、包裹 `{}`、闭合花括号、闭合引号
+  - **Truncation**：长字符串逐步截尾重试（从末尾减 50 字符）
+  - **Storm**：简单 key-value 提取、空对象兜底
+- 集成到 `streaming-executor.ts`：JSON.parse 失败后自动调用 repair pipeline
+- 所有修复失败时返回标准错误事件（不触发 API 重试）
 
 ### Step 1.7 CacheFirstLoop 完整实现
 
-状态：部分完成
+状态：完成（2026-05-30）
 
-- `packages/core/src/engine.ts` 已作为当前主 loop。
-- 已从 oh-my-pi `streamSimple` 切换为自研 `DeepSeekClient` 驱动。
-- 支持：
-  - 多轮 tool call 循环。
-  - `AbortController` 中断请求和工具。
-  - token/cache usage 累加。
-  - session best-effort 写入。
-
-未完成：
-
-- 尚未拆出计划中的 `loop.ts`。
-- 尚未实现预算、fold、repair、force summary。
-
-额外完成：
-
+- 新增 `packages/core/src/loop.ts` 独立 `runLoop()`：从 `engine.ts` 完整析出
+- `engine.ts` 的 `submit()` 简化为 ≈12 行配置 + `yield* runLoop()`
+- Fold 集成：
+  - 每轮开始时检查 `ctx.getFoldDecision()`
+  - `force` 时 yield `status` 警告 + 携带 metadata
+  - `suggest` 且 ratio > 75% 时 yield 推荐事件
+  - 100ms 超时降级（不阻塞 loop 启动）
 - Stream 错误自动重试：连续 3 次失败才终止，中间自动重试
 
 ### Phase 1 当前验证状态
@@ -215,13 +215,15 @@
 | reasoning 分离 | 完成 | 流式事件已分离，历史 round-trip 已实现 |
 | SegmentedLog / JSONL | 最小完成 | 追加写 + #12 恢复读 |
 | 阈值旁路 | 完成 | #11: 近似 token 估算 + fold 决策阈值 |
-| Tokenizer Map 回收 | 未完成 | 未实现 tokenizer pool |
+| Tokenizer Map 回收 | 完成 | 1.1 Worker Pool + O(1) Map |
 | AST 防假闭合 | 未完成 | 当前非 eager dispatch |
-| Cache miss 阵痛事件 | 未完成 | 无 fold 决策 |
+| Cache miss 阵痛事件 | 部分完成 | 1.3 loop.ts fold 决策事件 |
 | assistant_final 协议边界 | 完成 | 每次模型响应后产出完整 assistant 消息边界 |
 | 工具结果顺序确定性 | 完成 | shared 工具并发执行后按声明 index 顺序提交到上下文 |
 | prefix fingerprint 覆盖 toolSpecs/fewShots | 完成 | cacheKey 三段组合，4 个单测覆盖三类变化 |
-| 核心测试 | 部分完成 | 现有 20 pass / 3 skip |
+| 核心测试 | 部分完成 | 现有 66 pass / 3 skip |
+| Repair Pipeline | 完成 | 1.2 Scavenge/Truncation/Storm |
+| Loop 独立拆分 | 完成 | 1.3 loop.ts 从 engine.ts 析出 |
 | API 重试 | 完成 | 429/5xx 指数退避 + 引擎 loop 错误恢复 |
 
 ## Phase 2：智能推理强度调节系统
@@ -361,7 +363,7 @@ bun test
 结果：
 
 - `bun run typecheck`：通过。
-- `bun test`：66 pass / 3 skip / 0 fail（ADVICE.md v2 修复后测试依然全绿）。
+- `bun test`：66 pass / 3 skip / 0 fail（Phase 1.1~1.3 后测试依然全绿）。
 
 测试文件：
 
@@ -477,6 +479,9 @@ bun test
 - P2-1: read_file 截断追加 `[truncated: N more chars]` 提示
 - P2-2: list-dir stat 失败标记为 `"unknown"` 类型（扩展 type 联合）
 - P2-5: 删除 session.ts 中 SegmentedLog 死代码类
+- 1.1: Tokenizer Worker Pool（tokenizer-pool.ts + tokenizer-worker.js）
+- 1.2: Tool-call Repair 流水线（repair.ts Scavenge/Truncation/Storm）
+- 1.3: CacheFirstLoop 拆分（loop.ts 独立 + fold 决策事件）
 
 ## 已知限制
 

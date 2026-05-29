@@ -1,5 +1,6 @@
 import type { AgentTool, LoopEvent, ToolContext, ToolResult } from "./interface.js"
 import type { ToolCall } from "./types.js"
+import { repairToolArguments } from "./context/repair.js"
 
 export class StreamingToolExecutor {
   private tools: Map<string, AgentTool>
@@ -73,9 +74,13 @@ export class StreamingToolExecutor {
     let args: Record<string, unknown>
     try {
       args = parseToolArguments(tc.function.arguments)
-    } catch (e) {
-      const result = makeToolError(`Invalid arguments for ${tc.function.name}: ${errorMessage(e)}`)
-      return { event: makeErrorEvent(result, tc.function.name, index), result }
+    } catch {
+      const repaired = repairToolArguments(tc.function.arguments)
+      if (!repaired.success) {
+        const result = makeToolError(`Invalid arguments for ${tc.function.name}: failed all repair stages`)
+        return { event: makeErrorEvent(result, tc.function.name, index), result }
+      }
+      args = repaired.args
     }
 
     try {

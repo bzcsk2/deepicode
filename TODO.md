@@ -1,145 +1,285 @@
 # Deepicode TODO
 
-本文记录下一阶段任务，优先级从高到低排列。每个任务完成后同步更新 `DONE.md`。
-
-## P1.5：事件体系
-
-### 9. 展示事件与协议事件分层
-
-状态：完成
+本文按实施计划 Phase 记录待完成任务，优先级从高到低。完成后同步更新 `DONE.md`。
 
 ---
 
-## P2：Context 与 Session
+## Phase 1 遗留（已完成）
 
-### 11. 接入 token 估算与 fold 决策
+### 1.1 Tokenizer Worker Pool ✅
 
-状态：完成
+**实施计划**: Step 1.4
 
-### 12. 完成 session 恢复
+状态：完成（2026-05-30）
 
-状态：完成
+- `tokenizer-pool.ts` + Worker 线程入口
+- O(1) Map 任务调度，5 秒超时自动降级
+- Worker 不可用时回退 CHARS_PER_TOKEN=4 近似估算
 
-### N2. 工具输出的非 UTF-8 乱码检测
+### 1.2 Tool-call Repair 流水线 ✅
 
-状态：完成
+**实施计划**: Step 1.6
+
+状态：完成（2026-05-30）
+
+- `repair.ts` 三阶段：Scavenge（6 子策略）→ Truncation → Storm
+- 修复失败时不触发 API 重试
+
+### 1.3 CacheFirstLoop 独立拆分 + 预算/Fold 集成 ✅
+
+**实施计划**: Step 1.7
+
+状态：完成（2026-05-30）
+
+- `loop.ts` 从 engine.ts 析出独立 `runLoop()`，engine.ts `submit()` 简化为 ≈12 行
+- Fold 决策（65%/75%/80%）在循环前非阻塞触发
+- Fold force 时 yield `status` 事件通知
 
 ---
 
-## P4：测试与文档
+## Phase 2: 智能推理强度调节（5 项）
 
-### 14. 补齐 SSE 边界测试
+### 2.1 Tier 配置定义
 
-状态：待完成
+**实施计划**: Step 2.1
 
-目标：保证 streaming parser 在真实网络 chunk 边界下可靠。
+目标：CNY 原生计价。四档位（chat-fast / chat-full / reasoner-budget / reasoner）。
 
 验收：
 
-- chunk 被任意切分（1 字节 / 半个 UTF-8 字符 / 半个 JSON 字段）仍可解析。
-- 最后一个 chunk 不完整时不崩溃。
-- `[DONE]` 后正确结束。
+- `strategy/tier-config.ts`
+- CNY 定价常量（非 USD 换算）
+- max_tokens / thinking 梯级配置
 
----
+### 2.2 TaskClassifier（任务分类器）
 
-## P3：Shell / TUI / Agent 外壳
+**实施计划**: Step 2.2
 
-### 15. 建立 shell 状态层
-
-状态：待完成
-
-目标：从 CLI 直接消费 core events，升级为 shell state projection。
+目标：纯规则引擎，0 Token 成本。文件引用数、跨模块关键词、长度信号打分 → 0-10 分。
 
 验收：
 
-- `packages/shell/src/state.ts` 实现不可变状态更新。
-- 支持 messages、tool status、stats、errors。
+- `strategy/task-classifier.ts`
+- 加载用户 `classifier.json`（优先）
+- 单测覆盖：简单问答 → chat-fast，重构 → reasoner
 
-### 16. 重新评估 TUI 接入
+### 2.3 ChainEstimator（任务链估算器）
 
-状态：待完成
+**实施计划**: Step 2.3
 
-建议：不再跨仓库源码直引 oh-my-pi。若使用，先做 workspace/package 级依赖或复制必要组件。
+目标：滑动 TPS 窗口（最近 10 次）+ Agentic 链式补偿（score > 6 时输出 Token 乘 2~3 倍）。
 
 验收：
 
-- `bun run typecheck` 不依赖 `/vol4/Agent/oh-my-pi` 源码。
-- UI 能显示 assistant stream、tool progress、tool result、stats。
+- `strategy/chain-estimator.ts`
+- 异步 glob 扫描限 50 文件 / 500ms 超时
+
+### 2.4 StrategySelector（策略选择器）
+
+**实施计划**: Step 2.4
+
+目标：编排分类 + 预估 → `StrategyNotifyEvent`（3 秒倒计时）。
+
+验收：
+
+- `strategy/strategy-selector.ts`
+- 倒计时超时自动执行推荐档位
+- `resolveTierDecision()` 可提前确认
+
+### 2.5 TUI StrategyNotify 组件
+
+**实施计划**: Step 2.5
+
+目标：终端内渲染 4 档对比卡片，左右键切换，Enter 确认。
+
+验收：
+
+- `packages/tui/src/components/StrategyNotify.tsx`
+- 超时自动使用推荐
+- CNY 价格区间显示
 
 ---
 
-## P4：测试与文档
+## Phase 3: 壳层增强（3 项）
 
-### 17. README 重建
+### 3.1 集中式状态管理
 
-状态：待完成
+**实施计划**: Step 3.1
 
-验收：包含安装、配置、运行、测试、工具说明、限制。
+目标：`packages/shell/src/state.ts` 实现不可变状态更新。`processEvents()` 接收事件队列，派生出全新 TUI 渲染树。
 
-### 18. 增加 E2E 场景
+验收：
 
-状态：待完成
+- 声明式状态更新（返回新对象）
+- 支持 messages、tool status、stats、errors 四个子状态
+
+### 3.2 双模式事件系统
+
+**实施计划**: Step 3.2
+
+目标：推模式 `EventStream` + Pub/Sub `EventBus`，桥接核心的拉模式 AsyncGenerator。
+
+验收：
+
+- `packages/shell/src/events.ts`
+- 多消费者订阅（TUI、日志、插件）
+
+### 3.3 多 Agent 系统
+
+**实施计划**: Step 3.3
+
+目标：Build Agent（全工具权限）+ Plan Agent（只读权限）。Tab 键切换，Plan-to-Build 时分析结论注入 `system-reminder`。
+
+验收：
+
+- `packages/shell/src/agents/`
+- JSON/Markdown 配置加载
+- Agent 切换不修改消息历史
+
+---
+
+## Phase 4: 工具层完善（3 项）
+
+### 4.1 LSP 集成
+
+**实施计划**: Step 6.2（原 Phase 6，提前到工具层）
+
+目标：文件编辑后触发 `vscode-languageclient`，3 秒内自动获取 diagnostics，类型错误反馈给 LLM。
+
+验收：
+
+- `packages/tools/src/lsp-client.ts`
+- 编辑后自动触达，不阻塞主循环
+- 类型错误在本轮内反推给模型
+
+### 4.2 MCP 客户端
+
+**实施计划**: Step 6.3
+
+目标：接入 Model Context Protocol。支持 `.config/deepicode/mcp.json` 外挂服务。
+
+验收：
+
+- `packages/tools/src/mcp-client.ts`
+- 工具自动发现与注册
+
+### 4.3 Web Fetch & Python Kernel
+
+**实施计划**: Step 6.4 + 4.5
+
+目标：`web-fetch.ts`（HTTP 请求工具）、`python-kernel.ts`（IPython 会话）。
+
+验收：
+
+- web-fetch 支持 GET/POST，超时控制
+- python-kernel 维系会话变量
+
+---
+
+## Phase 5: 安全层（3 项）
+
+### 5.1 Deny-first 权限引擎
+
+**实施计划**: Step 5.1
+
+目标：三级判定——Deny 规则优先 → Allow 规则 → 默认 Ask。
+
+验收：
+
+- `packages/security/src/permission.ts`
+- 多级模式：`default` / `acceptEdits` / `dontAsk`
+
+### 5.2 Hooks 系统
+
+**实施计划**: Step 5.2
+
+目标：`beforeToolCall` / `afterToolCall` 拦截器。System-level bypass 标志用于 stale-read 自动重试的静默放行。
+
+验收：
+
+- `packages/security/src/hooks.ts`
+- 死锁提权：stale-read 触发自动重读时不弹 Ask 窗
+
+### 5.3 Git Snapshot 单文件追踪
+
+**实施计划**: Step 5.3
+
+目标：`.deepicode_patches/` 目录，仅备份被修改的单文件旧版本。毫秒级 `revert()`。
+
+验收：
+
+- `packages/security/src/git-snapshot.ts`
+- 不拷贝全仓库（monorepo 友好）
+- DiffPreview 终端差异展示
+
+---
+
+## Phase 6: 集成测试与调优（3 项）
+
+### 6.1 SSE 边界测试（#14）
+
+目标：streaming parser 在任意 chunk 切分下正确解析。
+
+验收：
+
+- 1 字节切分 / 半个 UTF-8 字符 / 半个 JSON 字段
+- 最后一个 chunk 不完整时不崩溃
+
+### 6.2 E2E 场景（#18）
+
+目标：自动化端到端测试，不依赖真实 API。
 
 建议场景：
 
-- bash 执行 `pwd` 并返回结果。
-- read_file 读取 `package.json`。
-- edit 修改临时文件并验证内容。
-- 工具错误后模型继续回复。
-- 中断正在执行的 bash。
+- bash 执行 `pwd` 并返回结果
+- read_file 读取 `package.json`
+- edit 修改临时文件并验证内容
+- 工具错误后模型继续回复
+- 中断正在执行的 bash
+
+### 6.3 性能基准 & 计费校准
+
+**实施计划**: Step 7.2
+
+目标：抽样 10 轮多工具调用，核对 DeepSeek 控制台账单与终端 CNY 预估，误差 < 20%。
 
 验收：
 
-- 每个场景可自动化运行。
-- CI 或本地 `bun test` 可执行，不依赖真实 DeepSeek API。
+- 基准测试脚本
+- TUI 帧率 > 30fps（大文件 Hash 计算时）
 
 ---
 
-## 暂缓任务
+## 待清理（3 项）
 
-以下任务价值高，但当前不建议立即做：
-
-- 完整 Repair Pipeline。
-- Tokenizer Worker Pool（精确版，N1 的粗粒度截断和 #11 的近似估算足以应对短期需求）。
-- StrategySelector 和 CNY 成本卡片。
-- MCP / LSP / Python Kernel。
-- Git Snapshot 回滚。
-- 多 Agent Plan / Build 模式。
-- D4（空 messages 空哈希，实际不触发）。
-- D5（`buildPiModel` + `vendor/pi.d.ts` 死代码清理，不阻塞功能）。
-
-原因：这些任务会显著扩大实现面。建议先把 session 恢复、测试闭环稳定后再推进。
+| # | 内容 | 说明 |
+|---|------|------|
+| D5 | `buildPiModel` + `vendor/pi.d.ts` + `vendor/pi.js` 死代码 | 3 文件删除 |
+| P2-4 | `computeFingerprint` 冗余 reasoning_content | `immutable.ts` 清理 |
+| P2-5 | `SegmentedLog` 类死代码 | `session.ts` 删除 ✅ |
 
 ---
 
-## 已完成汇总
+## 暂缓
 
-| # | 任务 | commit |
-|---|------|--------|
-| 1 | `assistant_final` 事件 | — |
-| 2 | `reasoning_content` 历史字段 | — |
-| 3 | 工具结果提交顺序确定化 | — |
-| 4 | bash 最小权限确认 | — |
-| 5 | read_file 路径与大文件保护 | — |
-| 6 | Stale-read Validation 最小版 | — |
-| 7 | Hash-Anchored Edit 完整化（oldHash） | a3ace0a |
-| 8 | 9-Pass Fuzzy Edit 完整化（9/9 pass） | a3ace0a |
-| 10 | prefix fingerprint 覆盖 toolSpecs/fewShots | — |
-| 13 | API 重试与错误分类 | — |
-| B1 | SSE done 事件重复 | 794d414 |
-| B2 | 缺少 write_file | 794d414 |
-| B3 | bash cwd 不解析 | 794d414 |
-| C1 | 缺少 list_dir/grep | 794d414 |
-| B4 | 临时文件碰撞 | d76f3c0 |
-| B5 | fuzzy regex 交叉干扰 | d76f3c0 |
-| D1 | SENSITIVE_FILE_PATTERNS 重复 | d76f3c0 |
-| D2 | known_hosts 保护缺失 | 794d414 |
-| D3 | getState 硬编码 | d76f3c0 |
-| N1 | 上下文无界增长截断 | 4821054 |
-| N3 | hash-edit 临时文件泄漏修复 | a3ace0a |
-| N4 | stale-read 全局状态清理 | a3ace0a |
-| N2 | 非UTF-8乱码检测 + safeStringify | ad8785a |
-| 9 | 展示事件与协议事件分层 | ad8785a |
-| 11 | token估算与fold决策 | ad8785a |
-| 12 | session恢复 | ad8785a |
-| P1-1~P1-3 + P2-1/P2-2/P2-5 | ADVICE.md v2 全部 6 项 Bug | fdb7cff |
+以下任务价值高但当前不做：
+
+- MCP / LSP / Python Kernel（已在 Phase 4 中，优先于安全层）
+- TTSR 规则系统
+- Universal Config Discovery
+- 多前端（Web、IDE Plugin）
+
+---
+
+## 进度总览
+
+| Phase | 内容 | 完成 | 待做 |
+|-------|------|------|------|
+| 0 | 脚手架 | ✅ | — |
+| 1 | 核心引擎 | ✅ 全部完成 | — |
+| 2 | 智能推理调节 | — | 2.1~2.5 |
+| 3 | 壳层增强 | — | 3.1~3.3 |
+| 4/6 | 工具层 + 生态 | 7 工具可用 | 4.1~4.3 |
+| 5 | 安全层 | — | 5.1~5.3 |
+| 6/7 | 测试与调优 | — | 6.1~6.3 |
+| — | 清理 | — | 3 项 |
