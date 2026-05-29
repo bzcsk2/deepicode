@@ -6,7 +6,7 @@
 - `最小完成`：具备可用闭环，但未达到实施计划中的完整版要求。
 - `部分完成`：只完成子集能力，仍需后续补齐。
 
-最后更新：2026-05-30（Phase 1 遗留三项全部完成）
+最后更新：2026-05-30（TUI 接入完成 — 差分渲染引擎 + 7 业务组件）
 
 ## Phase 0：脚手架搭建
 
@@ -47,10 +47,10 @@
 状态：完成
 
 - CLI 入口位于 `packages/cli/src/index.ts`，加载 `packages/cli/src/tui.ts`。
-- 当前 CLI 为 readline 交互，不再直连 oh-my-pi TUI 源码。
+- CLI 已从 readline 替换为 oh-my-pi 差分渲染 TUI（纯 JS 移植版）。
 - 支持：
-  - 交互模式：`bun run dev`
-  - 单轮输入：`printf '你好\n' | bun run dev`
+  - TUI 交互模式：`bun run dev`
+  - 非 TTY 管道模式：`printf '你好\n' | bun run dev`
   - 帮助信息：`bun run dev --help`
 
 ### Phase 0 验收状态
@@ -236,7 +236,15 @@
 
 ## Phase 3：壳层增强
 
-状态：未开始
+### Step 3.0 TUI 接入（拆分到此处）
+
+状态：完成（2026-05-30）
+
+- 移植 oh-my-pi 差分渲染引擎，纯 JS 替代 Rust FFI
+- 24 文件 / ~3K 行，`bun run typecheck` 通过，66 tests 全绿
+- CLI 已从 readline 替换为 TUI（同时保留非 TTY 管道模式）
+
+未完成：
 
 - `packages/shell/src/index.ts` 仍是 placeholder。
 - 尚未实现状态管理、EventStream/EventBus、多 Agent 系统。
@@ -383,9 +391,11 @@ bun test
 | API key | env 优先，其次 `api-key` 文件 | `api-key` 已加入 `.gitignore` |
 | API 重试 | 指数退避（最多 3 次） | 429/502/503 自动重试，400/401 直接报错 |
 | 核心事件 | `AsyncGenerator<LoopEvent>` | CLI 逐事件消费 |
-| 工具执行 | shared 并行 / exclusive 串行 | 当前为稳定优先最小版本 |
+| 工具执行 | shared 并行 / exclusive 串行 | 当前稳定优先（完整 tool call 后执行）；Eager Dispatch 设计已确定（见下） |
 | 会话持久化 | JSONL best-effort append | 写入 `.deepicode/sessions/`，不阻塞主流程 |
-| 当前 CLI | readline | 暂未接入真正 TUI 组件 |
+| 当前 CLI | oh-my-pi TUI 差分渲染 | 纯 JS 移植版，不依赖 Rust FFI |
+| Eager Dispatch | 分级策略（设计已确定，待实现） | 读操作（`isConcurrencySafe`）buffer 完整即刻执行；写操作等 `finish_reason` 确认。收益最大化（读占 90%+ 调用），风险为零（写走保守路径） |
+| TUI 技术选型 | oh-my-pi 差分渲染引擎 | 24 文件 / ~3K 行（纯 JS 替代 Rust FFI），`render(width) → string[]` 同步接口，Bun 原生运行 |
 
 ## Phase 1.5：事件体系
 
@@ -478,10 +488,23 @@ bun test
 - P1-3: token-estimator 加入 reasoning_content 估算
 - P2-1: read_file 截断追加 `[truncated: N more chars]` 提示
 - P2-2: list-dir stat 失败标记为 `"unknown"` 类型（扩展 type 联合）
+- 第四轮 ADVICE 修复（P2×4 + P3×3）：
+  - P2-4-1: Session 恢复过滤 system 消息，避免双 system → prefix-cache 失效
+  - P2-4-2: AsyncSessionWriter.enqueue 加 try-catch，防止不可序列化 payload 中断事件流
+  - P2-4-3: streaming-executor shared 路径 tool_progress(running) 提前到 Promise.all 前
+  - P2-4-4: refinedEstimate 抽取为共享函数，tokenizer Worker 与主线程估算统一
+  - P3-4-1: apiCalls 计数从 usage 移到 done 事件（每轮一次）
+  - P3-4-3: todowrite 增加 todo 项运行时结构校验
+  - P3-4-4: sensitive.ts 补充 .env.*/证书/npmrc/AWS 凭证等 8 个模式
 - P2-5: 删除 session.ts 中 SegmentedLog 死代码类
 - 1.1: Tokenizer Worker Pool（tokenizer-pool.ts + tokenizer-worker.js）
 - 1.2: Tool-call Repair 流水线（repair.ts Scavenge/Truncation/Storm）
 - 1.3: CacheFirstLoop 拆分（loop.ts 独立 + fold 决策事件）
+- TUI 接入：移植 oh-my-pi 差分渲染引擎（tui.ts/terminal.ts/stdin-buffer.ts/bracketed-paste.ts/keybindings.ts/symbols.ts）
+- 纯 JS 替代 Rust FFI（utils.ts：visibleWidth/wrapTextWithAnsi/truncateToWidth；keys.ts：matchesKey/parseKey/extractPrintableText）
+- 基础组件：Box/Text/Spacer/TruncatedText/Loader/Markdown/SelectList
+- 业务组件：ChatView/ToolCallView/Input/StrategyNotify/TokenEstimate/DiffPreview/StatusLine
+- 集成：bridge.ts 事件桥接 + CLI 替换 readline
 
 ## 已知限制
 
