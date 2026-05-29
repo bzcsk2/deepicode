@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
-  "scripts": {},
   "dependencies": {
-    "marked": "^15.0.0"
+    "@deepicode/ink": "workspace:*",
+    "@deepicode/core": "workspace:*",
+    "react": "^19.2.4"
   }
 }

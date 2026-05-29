@@ -56,18 +56,30 @@ deepicode/
 │   │   │   │   └── plan-agent.ts
 │   │   │   └── index.ts
 │   │   └── package.json
-│   ├── tui/                     # TUI 渲染层（基于 oh-my-pi 差分渲染引擎）
+│   ├── ink/                      # Ink/React 终端渲染框架（复制自 best-claude-code/@anthropic/ink）
 │   │   ├── src/
-│   │   │   ├── tui.ts            # TUI 主类（extends Container）
-│   │   │   ├── components/
-│   │   │   │   ├── chat-view.ts       # 消息列表 + 流式增量渲染
-│   │   │   │   ├── tool-call-view.ts  # 工具调用状态与结果
-│   │   │   │   ├── strategy-notify.ts # 四档位 CNY 成本卡片 + 倒计时
-│   │   │   │   ├── token-estimate.ts  # 实时 Token 用量面板
-│   │   │   │   ├── diff-preview.ts    # 代码变更预览
-│   │   │   │   ├── status-line.ts     # 状态栏
-│   │   │   │   └── input.ts           # 多行输入框
-│   │   │   └── bridge.ts        # AsyncGenerator<LoopEvent> → TUI 事件订阅桥接
+│   │   │   ├── index.ts          # 公共 API（Box, Text, ScrollBox, hooks 等）
+│   │   │   ├── components/       # UI 原语（Box, Text, ScrollBox, AlternateScreen 等）
+│   │   │   ├── core/             # 渲染引擎（reconciler, yoga-layout, terminal I/O）
+│   │   │   ├── hooks/            # React hooks（useInput, useTerminalSize 等）
+│   │   │   ├── theme/            # 主题系统（ThemeProvider, Dialog, Pane 等）
+│   │   │   └── keybindings/      # 键盘快捷键系统
+│   │   └── package.json
+│   ├── tui/                     # TUI 业务组件层（deepicode 专属 React/JSX 组件）
+│   │   ├── src/
+│   │   │   ├── App.tsx               # 顶层组件，连接 Engine → FullscreenLayout
+│   │   │   ├── FullscreenLayout.tsx  # 布局组件（复制自 best-claude-code，已适配）
+│   │   │   ├── fullscreen.ts         # Fullscreen 环境检测
+│   │   │   ├── DeepiMessages.tsx     # 消息列表 + 流式增量渲染
+│   │   │   ├── DeepiPromptInput.tsx  # 多行输入框
+│   │   │   ├── ToolCallBanner.tsx    # 工具调用状态展示
+│   │   │   ├── Spinner.tsx           # 加载动画
+│   │   │   ├── StatusBar.tsx         # 底部状态栏
+│   │   │   ├── bridge.tsx            # AsyncGenerator<LoopEvent> → React state
+│   │   │   ├── ModalContext.ts       # Modal 尺寸 context（stub）
+│   │   │   ├── promptOverlayContext.tsx  # 斜杠命令建议浮层 context（stub）
+│   │   │   ├── browser.ts           # openBrowser/openPath stub
+│   │   │   └── stringUtils.ts       # plural 等小工具
 │   │   └── package.json
 │   ├── tools/                   # 工具层
 │   │   ├── src/
@@ -113,8 +125,7 @@ deepicode/
 | 缩写 | 来源 | 仓库地址 | 参考内容 | 实际关系 |
 |------|------|---------|---------|---------|
 | **RNX** | Reasonix | /vol4/Agent/DeepSeek-Reasonix | Cache-first 设计、repair pipeline、prefix-cache 优化思想 | 理念参考，代码全新 |
-| **OMP** | oh-my-pi | /vol4/Agent/oh-my-pi | TUI 差分渲染引擎、Component 接口、Agent 状态管理模式 | TUI 核心组件复制自 `packages/tui/`，其余代码全新 |
-| **CC** | Claude Code | /vol4/Agent/best-claude-code | StreamingToolExecutor 思路、Deny-first 权限规则、工具设计 | 理念参考 |
+| **CC** | Claude Code | /vol4/Agent/best-claude-code | TUI 渲染引擎（Ink/React 框架）+ 布局系统复制自 `packages/@ant/ink/`；StreamingToolExecutor 思路、Deny-first 权限规则、工具设计 | Ink 框架完整复制（~150 文件 / ~27K 行），仅修改 ~10 行适配；其余代码全新 |
 | **OC** | OpenCode | /vol4/Agent/opencode | 9-Pass Fuzzy Edit、Stale-read validation、多 Agent 模式 | 理念参考 |
 
 ### 测试约定
@@ -288,29 +299,47 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
 
 ---
 
-## Phase 3：壳层增强 + TUI 接入
+## Phase 3：壳层增强 + TUI 接入（Ink/React）
 
-**目标**：实现集中式状态管理、双模式事件系统、多 Agent 系统，并基于 oh-my-pi TUI 引擎搭建终端界面。
-**预计耗时**：2 周
+**目标**：从 best-claude-code 复制 Ink/React 终端渲染框架，替换当前自研 TUI；实现集中式状态管理、双模式事件系统、多 Agent 系统。
+**预计耗时**：1.5 周（TUI 重构 3 天 + 壳层增强 4 天）
 
-### Step 3.0：从 oh-my-pi 复制 TUI 核心组件
+### Step 3.0：从 best-claude-code 复制 Ink 框架（替代自研 TUI）
 
-不跨仓库源码引用，只复制必要的核心文件到 `packages/tui/`：
+> **决策变更**（2026-05-29）：原计划从 oh-my-pi 复制自研 TUI（17 文件 / ~11K 行，手动差分渲染）。经评估，自研框架缺少 flexbox 布局、虚拟滚动、鼠标交互、Alternate Screen 等生产级能力，补全工作量远大于直接复制 best-claude-code 的 `@anthropic/ink` 框架（146 文件 / ~27K 行，React 19 + Yoga 布局引擎）。
+>
+> Ink 框架完全自包含，仅 3 处引用了 best-claude-code 特有逻辑，其余均为标准 npm 依赖。详细实施步骤见 `TODO.md` 第 0 节。
 
-1. 复制 `packages/tui/src/tui.ts`（TUI 主类 + Container + 差分渲染引擎）
-2. 复制 `packages/tui/src/terminal.ts`（ProcessTerminal）
-3. 复制 `packages/tui/src/components/` 中的基础组件：`box.ts`、`text.ts`、`input.ts`、`markdown.ts`、`loader.ts`、`spacer.ts`
-4. 复制 `packages/tui/src/keys.ts`、`utils.ts`、`symbols.ts`、`keybindings.ts`
-5. 精简依赖：去掉 `@oh-my-pi/pi-natives`（Bun FFI）和 `@oh-my-pi/pi-utils`，用标准 Bun API 替代
+1. **复制 Ink 框架**：`best-claude-code/packages/@ant/ink/` → `deepicode/packages/ink/`（全部 146 文件）
+2. **修改 3 处**：`ThemeProvider.tsx`（删除 `feature('AUTO_THEME')`）、`osc.ts`（`USER_TYPE === 'ant'` → `false`）、`ink.tsx`（删除 MACRO 注释）
+3. **复制布局组件**：`FullscreenLayout.tsx`（550 行）、`fullscreen.ts`（精简为 ~30 行），适配 ~10 个 import 为 deepicode 等效模块
+4. **新写 7 个业务组件**（~1200 行 React/JSX）：
+   - `App.tsx` — 顶层组件，连接 Engine → FullscreenLayout
+   - `bridge.tsx` — `AsyncGenerator<LoopEvent>` → React state 桥接
+   - `DeepiMessages.tsx` — 消息列表渲染（user/assistant/tool 三种角色 + 流式增量）
+   - `DeepiPromptInput.tsx` — 输入框（多行、历史、Ctrl+C）
+   - `ToolCallBanner.tsx` — 工具调用进度显示
+   - `Spinner.tsx` — 加载动画
+   - `StatusBar.tsx` — 底部状态栏（provider + model + tokens + 计时）
+5. **安装依赖**：`react`、`react-reconciler`、`chalk`、`figures`、`cli-boxes` 等 16 个 npm 包
+6. **配置**：tsconfig 加 `"jsx": "react-jsx"` + paths 映射；更新 `package.json` workspaces
+7. **清理旧代码**：删除自研 TUI 的全部文件（`tui.ts`、`terminal.ts`、`stdin-buffer.ts`、`keys.ts`、`keybindings.ts` 及所有旧 `components/*.ts`），保留 `bridge.ts`（被新的 `bridge.tsx` 替代）
 
-**TUI 技术选型理由**（对比 best-claude-code）：
+**与旧方案的对比**：
 
-| 维度 | oh-my-pi TUI | best-claude-code (Ink fork) |
+| 维度 | 旧方案 (oh-my-pi 自研) | 新方案 (Ink 复制) |
 |------|:---:|:---:|
-| 规模 | 17 文件 / ~11K 行 | 685+ 文件 / ~128K 行 |
-| 组件接口 | `render(width) → string[]`（同步） | React 组件 + JSX + hooks |
-| 运行时 | **Bun**（原生） | Node.js（React 19 + Yoga） |
-| 事件模型 | 订阅 → requestRender | Zustand → useSyncExternalStore → reconciler |
+| 搬运规模 | 17 文件 / ~11K 行 | 150 文件 / ~27K 行 |
+| 新写代码 | ~3K 行业务组件 | ~1.2K 行业务组件 |
+| Flexbox 布局 | 需自实现 | Yoga 引擎，自带 |
+| 虚拟滚动 | 需自实现（~2周） | ScrollBox，自带 |
+| 鼠标交互 | 需自实现（~1周） | SGR mouse tracking，自带 |
+| 文本选择 | 无 | 自带 |
+| Alternate Screen | 无 | 自带 |
+| 搜索高亮 | 无 | 自带 |
+| 总工作量 | 3-5 周 | 2-3 天 |
+| 长期维护 | 维护自己的精简框架 | 维护 ~27K 行 Ink 框架代码 |
+| 最终体验 | 功能近似但细节差距明显 | 与 best-claude-code 一致 |
 
 ### Step 3.1：集中式状态管理
 1. 创建 `packages/shell/src/state.ts`。
@@ -322,25 +351,27 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
 3. 创建 `packages/tui/src/bridge.ts`：`AsyncGenerator<LoopEvent>` → TUI 事件订阅。
 4. TUI 组件通过 `subscribe(engine, onEvent)` 消费事件流，事件驱动 `requestRender()`。
 
-### Step 3.3：TUI 业务组件
-基于 oh-my-pi 的 `Component` 接口实现 deepicode 特有组件：
-1. `chat-view.ts` — 消息列表 + `assistant_delta` 流式增量追加 + 自动滚动
-2. `tool-call-view.ts` — `tool_start` / `tool` / `tool_progress` 状态展示
-3. `strategy-notify.ts` — 四档位 CNY 成本卡片 + 3 秒倒计时 + 方向键切换
-4. `token-estimate.ts` — 实时 Token 用量 + cache hit/miss 占比面板
-5. `diff-preview.ts` — 代码变更的行级差异展示
-6. `status-line.ts` — 底部状态栏（模型、token 用量、会话时长）
-7. `input.ts` — 多行输入框（支持粘贴、历史、Ctrl+C 中断）
-8. `model-picker.ts` — `/model` 命令的 provider 选择 + 模型列表 + API key 输入界面
+### Step 3.3：TUI 业务组件（React/JSX）
 
-### Step 3.3b：`/model` 命令实现
-1. 输入 `/model` 触发 provider 选择界面（zen / mimo / deepseek / custom）
-2. 选择 provider 后展示该 provider 可用模型列表（预设 + 自定义输入）
+基于 Ink/React 组件模型实现 deepicode 特有组件（全部新写，不复制 best-claude-code 的业务逻辑）：
+
+1. `App.tsx` — 顶层组件，通过 `AlternateScreen` + `FullscreenLayout` 包裹。核心结构：scrollable 区域（DeepiMessages + ToolCallBanner + Spinner）+ bottom 固定区域（DeepiPromptInput + StatusBar）
+2. `DeepiMessages.tsx` — 消息列表渲染。支持 user/assistant/tool 三种角色、`assistant_delta` 流式增量追加到最后一个 assistant block、markdown 转 ANSI、自动滚动
+3. `DeepiPromptInput.tsx` — 输入框，利用 Ink 的 `useInput` hook。支持多行输入（Enter 换行，空行提交）、输入历史（↑↓）、基本编辑（←→ home/end backspace/delete）、Ctrl+C 中断
+4. `ToolCallBanner.tsx` — `tool_start` / `tool` 状态展示，每个活跃工具一行（带 spinner/✓/✗ 图标）
+5. `Spinner.tsx` — 利用 `useAnimationFrame` 循环渲染旋转字符 + message + 计时
+6. `StatusBar.tsx` — 单行反转色状态栏，显示 provider + model + tokens + 会话时长
+7. `bridge.tsx` — `AsyncGenerator<LoopEvent>` → React state 桥接。遍历 engine.submit() 的事件流，用 `setState(prev => ({...}))` 不可变更新 messages/activeTools/tokens/isLoading 等字段
+
+### Step 3.3b：`/model` 命令 + model-picker 组件
+
+1. 输入 `/model` 触发 provider 选择界面（zen / mimo / deepseek / custom），利用 Ink 的 Dialog/Overlay 渲染
+2. 选择 provider 后展示该 provider 可用模型列表（预设 + 自定义输入），↑↓ 切换，Enter 确认
 3. 如果 provider 需要 API key（deepseek / custom），显示安全输入框（回显 `***`）
 4. API key 只在内存中（`config.apiKey`），不落盘
 5. Zen/Mimo 免费 tier 跳过 key 输入
 6. 切换即时生效——更新 `DeepicodeConfig`，后续 API 请求走新 provider
-7. 状态栏实时显示当前 provider + model
+7. 状态栏实时显示当前 provider + model（通过 `StatusBar.tsx`）
 
 ### Step 3.4：多 Agent 系统
 1. 创建 `packages/shell/src/agents/agent-config.ts`。
@@ -575,6 +606,11 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
 | T-AGT-003 | Plan Agent 只读工具 | plan-agent.ts |
 | T-AGT-004 | switchAgent 不修改历史 | agents/ |
 | T-AGT-005 | Plan-to-Build 上下文传递 | agents/ |
+| T-TUI-001 | bridge.tsx 正确处理 assistant_delta → state 更新 | bridge.tsx |
+| T-TUI-002 | bridge.tsx 正确处理 tool_start/tool 事件 | bridge.tsx |
+| T-TUI-003 | DeepiMessages 渲染三种角色消息 | DeepiMessages.tsx |
+| T-TUI-004 | DeepiMessages 流式文本追加到最后一个 block | DeepiMessages.tsx |
+| T-TUI-005 | DeepiPromptInput 输入→历史→提交完整流程 | DeepiPromptInput.tsx |
 
 ### 工具层测试（Phase 4）
 
@@ -632,9 +668,9 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
 
 | 决策点 | 选择 | 理由 | 影响范围 |
 |--------|------|------|---------|
-| 语言 | TypeScript | 用户已决定，oh-my-pi 和 Reasonix 都是 TS | 全局 |
-| TUI | oh-my-pi 差分渲染引擎 | 17 文件 / ~11K 行，同步 `render(width) → string[]` 接口，Bun 原生运行 | tui/ |
-| 壳 | 自研 readline CLI → oh-my-pi TUI | 先 readline 快速迭代，Phase 3 复制 oh-my-pi TUI 核心组件并实现业务组件 | shell/tui/cli |
+| 语言 | TypeScript | 用户已决定，best-claude-code 和 Reasonix 都是 TS | 全局 |
+| TUI | best-claude-code Ink/React 框架（复制 + 适配） | 146 文件 / ~27K 行，React 19 + Yoga flexbox 布局，自带 ScrollBox 虚拟滚动、鼠标交互、Alternate Screen、搜索高亮。自研框架缺少这些核心能力，补全工作量远大于复制。仅 3 处需修改以适应 deepicode | packages/ink/, packages/tui/src/ |
+| 壳 | 自研 readline CLI → Ink/React TUI | 先 readline 快速迭代，Phase 3 复制 best-claude-code Ink 框架并新写 ~1200 行 React 业务组件 | shell/tui/cli |
 | 核 | 自研引擎（借鉴 Reasonix 理念） | Cache-first、repair、cost control 是核心竞争力 | core/* |
 | 运行时 | Bun | 原生 TypeScript 支持，更好的开发体验 | 全局 |
 | 首要增强 | Streaming Tool Executor | 真正的速度提升，Claude Code 核心优点 | streaming-executor.ts |
@@ -660,7 +696,7 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
 | 风险 | 触发条件 | 应对策略 | 负责模块 |
 |------|---------|---------|---------|
 | DeepSeek API 字段变化 | API 升级 | 封装在 DeepSeekClient 内部，单点修改 | client.ts |
-| CLI 体验不足（readline 非 TUI） | 复杂交互场景 | Phase 3 复制 oh-my-pi TUI 核心组件，实现业务组件（ChatView 等） | engine.ts → tui/ |
+| CLI 体验不足（readline 非 TUI） | 复杂交互场景 | Phase 3 复制 best-claude-code Ink/React 框架，新写 ~1200 行 React 业务组件（DeepiMessages 等） | engine.ts → tui/ |
 | Worker 线程兼容性 | Bun Worker 与 Node.js worker_threads API 存在差异 | 优先使用 Bun 原生 Worker API，必要时提供主线程 fallback | tokenizer-pool.ts |
 | JSON 假闭合防御失灵 | 模型输出代码块中的花括号 | 当前稳定优先策略（完整 tool call 后执行）已规避；改 eager dispatch 时需重新评估 | streaming-executor.ts |
 | Hash-anchored 编辑失败率高 | 哈希不匹配 | 9-pass fallback 兜底 | hash-edit.ts → fuzzy-edit.ts |

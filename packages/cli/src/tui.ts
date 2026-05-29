@@ -4,8 +4,9 @@ import { ReasonixEngine } from "../../core/src/engine.js"
 import { buildSystemPrompt } from "../../core/src/system-prompt.js"
 import { createBashTool, createEditTool, createReadFileTool, createWriteFileTool, createListDirTool, createGrepTool, createTodoWriteTool } from "../../tools/src/index.js"
 import { clearReadTracker } from "../../tools/src/stale-read.js"
-import { TUI, ProcessTerminal, ChatView, ToolCallView, StatusLine, Input, Spacer } from "../../tui/src/index.js"
-import { processEvents } from "../../tui/src/bridge.js"
+import React from "react"
+import { wrappedRender as render } from "@deepicode/ink"
+import { App } from "../../tui/src/App.js"
 
 function printHelp(): void {
   output.write(`deepicode
@@ -81,39 +82,10 @@ async function runPipeMode(engine: ReasonixEngine): Promise<void> {
 }
 
 async function runTUIMode(engine: ReasonixEngine, config: ReturnType<typeof loadConfig>): Promise<void> {
-  const terminal = new ProcessTerminal()
-  const tui = new TUI(terminal)
-
-  const chatView = new ChatView()
-  const toolView = new ToolCallView()
-  const statusLine = new StatusLine()
-  const inputC = new Input()
-
-  // layout: spacer(top) → chat → tools → input → status(bottom)
-  // spacer pushes content down so input anchors to terminal bottom
-  const spacerH = Math.max(0, terminal.rows - 4)  // 4 = input+status+tools+safety
-  tui.addChild(new Spacer(spacerH))
-  tui.addChild(chatView)
-  tui.addChild(toolView)
-  tui.addChild(inputC)
-  tui.addChild(statusLine)
-  tui.setFocus(inputC)
-
-  // initial status
-  statusLine.setModel(`${config.model}`)
-
-  tui.start()
-
-  inputC.onSubmit = (text: string) => {
-    if (text === "__CANCEL__") { tui.stop(); process.exit(0); return }
-    if (text === "/exit" || text === "/bye") { tui.stop(); process.exit(0); return }
-    if (text === "/help") { printHelp(); return }
-    if (!text.trim()) return
-
-    chatView.addMessage("user", text)
-    const events = engine.submit(text)
-    processEvents(tui, chatView, toolView, null as any, statusLine, inputC, events)
-  }
+  const { waitUntilExit } = await render(
+    React.createElement(App, { engine, config })
+  );
+  await waitUntilExit();
 }
 
 main().catch((e) => {

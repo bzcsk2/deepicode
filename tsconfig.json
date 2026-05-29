@@ -6,16 +6,23 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "jsx": "react-jsx",
     "declaration": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "lib": ["ES2022"],
+    "lib": ["ES2023"],
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "outDir": "dist",
-    "rootDir": "."
+    "rootDir": ".",
+    "paths": {
+      "@anthropic/ink": ["./packages/ink/src/index.ts"],
+      "@anthropic/ink/*": ["./packages/ink/src/*"],
+      "@deepicode/ink": ["./packages/ink/src/index.ts"],
+      "@deepicode/ink/*": ["./packages/ink/src/*"]
+    }
   },
-  "include": ["packages/*/src/**/*.ts"],
+  "include": ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
   "exclude": ["node_modules", "dist", "**/__tests__/**"]
 }

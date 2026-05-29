@@ -4,9 +4,30 @@
 
 ---
 
-## 第一优先：TUI 接入 ✅
+## 0️⃣ TUI 重构：复制 best-claude-code 的 Ink 框架（最高优先） ✅
 
-> TUI 核心引擎 + 7 业务组件 + 事件桥接已完成。24 文件 / ~3K 行，66 tests 全绿。CLI 已从 readline 切换到差分渲染 TUI。
+> **状态**：2026-05-30 已完成。Ink 框架复制 + 7 业务组件新写 + CLI 接入 + 旧代码清理。`bun run typecheck` 零错误，`bun test` 66 pass。
+
+### 最终架构
+
+```
+packages/ink/                         (复制 best-claude-code/packages/@ant/ink/, 全部 146 文件)
+packages/tui/src/
+├── App.tsx                           (新写: 顶层组件, engine → layout 连接)
+├── FullscreenLayout.tsx              (精简版布局, ScrollBox + 底部固定)
+├── fullscreen.ts                     (精简版, ~30 行)
+├── DeepiMessages.tsx                 (新写: 消息渲染 + 流式增量)
+├── DeepiPromptInput.tsx              (新写: 输入框, useInput hook)
+├── ToolCallBanner.tsx                (新写: 工具调用进度)
+├── Spinner.tsx                       (新写: 加载动画)
+├── StatusBar.tsx                     (新写: 底部状态栏)
+├── bridge.tsx                        (新写: AsyncGenerator → React state)
+├── ModalContext.ts                   (stub)
+├── promptOverlayContext.tsx          (stub)
+├── browser.ts                        (stub)
+└── stringUtils.ts                    (stub)
+packages/cli/src/tui.ts               (更新: 使用 Ink render 替代手动 TUI)
+```
 
 ---
 

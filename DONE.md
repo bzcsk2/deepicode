@@ -240,9 +240,13 @@
 
 状态：完成（2026-05-30）
 
-- 移植 oh-my-pi 差分渲染引擎，纯 JS 替代 Rust FFI
-- 24 文件 / ~3K 行，`bun run typecheck` 通过，66 tests 全绿
-- CLI 已从 readline 替换为 TUI（同时保留非 TTY 管道模式）
+- 复制 best-claude-code 的 Ink 框架（146 文件，~27K 行）到 `packages/ink/`
+- 新写 7 个 deepicode 专属业务组件（bridge.tsx、DeepiMessages.tsx、DeepiPromptInput.tsx、ToolCallBanner.tsx、Spinner.tsx、StatusBar.tsx、App.tsx）
+- 4 个 stub 文件（ModalContext.ts、promptOverlayContext.tsx、browser.ts、stringUtils.ts）
+- 精简版 FullscreenLayout.tsx（适配 deepicode imports）+ fullscreen.ts（~30 行）
+- CLI 入口更新为 Ink render（`wrappedRender` + React.createElement）
+- 清理旧 TUI 代码（tui.ts、terminal.ts、components/ 目录等 ~20 个文件）
+- `bun run typecheck` 零错误，`bun test` 66 pass
 
 未完成：
 
@@ -393,9 +397,9 @@ bun test
 | 核心事件 | `AsyncGenerator<LoopEvent>` | CLI 逐事件消费 |
 | 工具执行 | shared 并行 / exclusive 串行 | 当前稳定优先（完整 tool call 后执行）；Eager Dispatch 设计已确定（见下） |
 | 会话持久化 | JSONL best-effort append | 写入 `.deepicode/sessions/`，不阻塞主流程 |
-| 当前 CLI | oh-my-pi TUI 差分渲染 | 纯 JS 移植版，不依赖 Rust FFI |
+| 当前 CLI | Ink render（wrappedRender） | `@deepicode/ink` 框架接管终端，AsyncGenerator → React state 桥接 |
 | Eager Dispatch | 分级策略（设计已确定，待实现） | 读操作（`isConcurrencySafe`）buffer 完整即刻执行；写操作等 `finish_reason` 确认。收益最大化（读占 90%+ 调用），风险为零（写走保守路径） |
-| TUI 技术选型 | oh-my-pi 差分渲染引擎 | 24 文件 / ~3K 行（纯 JS 替代 Rust FFI），`render(width) → string[]` 同步接口，Bun 原生运行 |
+| TUI 技术选型 | Ink 框架（复制 best-claude-code） | 146 文件 / ~27K 行，React + flexbox + 渲染器，已验证在 Bun 上运行 |
 
 ## Phase 1.5：事件体系
 
@@ -500,24 +504,14 @@ bun test
 - 1.1: Tokenizer Worker Pool（tokenizer-pool.ts + tokenizer-worker.js）
 - 1.2: Tool-call Repair 流水线（repair.ts Scavenge/Truncation/Storm）
 - 1.3: CacheFirstLoop 拆分（loop.ts 独立 + fold 决策事件）
-- TUI 接入：移植 oh-my-pi 差分渲染引擎（tui.ts/terminal.ts/stdin-buffer.ts/bracketed-paste.ts/keybindings.ts/symbols.ts）
-- 纯 JS 替代 Rust FFI（utils.ts：visibleWidth/wrapTextWithAnsi/truncateToWidth；keys.ts：matchesKey/parseKey/extractPrintableText）
-- 基础组件：Box/Text/Spacer/TruncatedText/Loader/Markdown/SelectList
-- 业务组件：ChatView/ToolCallView/Input/StrategyNotify/TokenEstimate/DiffPreview/StatusLine
-- 第五轮 TUI 审查修复（P0×2 + P1×5 + P2×8 + P3×5 = 20 项）：
-  - bridge.ts 重写：assistantStarted 占位、reasoning_delta/error/warning/status 事件处理、try-catch
-  - tool-call-view.ts：toolCallIndex 唯一标识 + STATUS_ORDER 状态机不回退
-  - loader.ts：destroy() 方法清理 timer
-  - strategy-notify.ts：旧 timer 清理 + cardW 最小值保护
-  - input.ts：水平滚动 + 1000 历史上限 + ctrl+d 支持
-  - markdown.ts：colWidth min 3 + cache LRU 50 条淘汰
-  - diff-preview.ts：visibleWidth 替代 s.length
-  - streaming-executor.ts：cwd 从构造函数传入
-  - select-list.ts：filter 比较实际 item 而非 index
-  - stdin-buffer.ts：pasteSeqs 循环前拷贝
-  - tui.ts：diffLines lc 仅纯追加场景覆盖
-  - chat-view.ts：重写，移除死 scroll 代码
-- 集成：bridge.ts 事件桥接 + CLI 替换 readline
+- TUI 接入（Ink 框架）：
+  - 复制 Ink 框架（146 文件 / ~27K 行）到 `packages/ink/`，3 处微改（ThemeProvider、osc.ts、ink.tsx）
+  - 适配 FullscreenLayout.tsx（10 处 import 替换）+ 精简 fullscreen.ts（~30 行）
+  - 4 个 stub 文件（ModalContext、promptOverlayContext、browser、stringUtils）
+  - 7 个业务组件：bridge.tsx（AsyncGenerator → React state）、DeepiMessages.tsx（消息渲染）、DeepiPromptInput.tsx（输入框）、ToolCallBanner.tsx（工具进度）、Spinner.tsx（加载动画）、StatusBar.tsx（状态栏）、App.tsx（顶层组件）
+  - CLI 入口更新为 Ink render（`wrappedRender` + React.createElement）
+  - 清理旧 TUI 代码（tui.ts、terminal.ts、components/ 目录等 ~20 个文件）
+  - 集成：bridge.tsx 事件桥接 + CLI 替换 readline
 
 ## 已知限制
 
