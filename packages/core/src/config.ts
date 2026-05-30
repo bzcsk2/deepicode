@@ -1,7 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs"
 import { resolve, join } from "node:path"
 import { DEEPSEEK_BASE_URL, DEEPSEEK_MODEL } from "./types.js"
-import type { Model } from "./vendor/pi.js"
 
 export interface DeepicodeConfig {
   apiKey: string
@@ -140,20 +139,5 @@ export function loadConfig(): DeepicodeConfig {
     maxContextRounds: 20,
     contextWindow: 128_000,
     provider,
-  }
-}
-
-export function buildPiModel(config: DeepicodeConfig): Model {
-  return {
-    id: config.model,
-    name: config.model,
-    api: "openai-completions",
-    provider: config.provider ?? "deepseek",
-    baseUrl: config.baseUrl,
-    reasoning: false,
-    input: ["text"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 1_000_000,
-    maxTokens: config.maxTokens,
   }
 }

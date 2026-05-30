@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
-import { PROVIDERS, getApiKeyEnvVar, buildPiModel, loadConfig, saveLastConfig } from "../src/config.js"
-import type { DeepicodeConfig } from "../src/config.js"
+import { PROVIDERS, getApiKeyEnvVar, loadConfig, saveLastConfig } from "../src/config.js"
 import { mkdtempSync, writeFileSync, existsSync, readFileSync, rmSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -38,23 +37,6 @@ describe("getApiKeyEnvVar", () => {
   })
 })
 
-describe("buildPiModel", () => {
-  it("should build correct model object", () => {
-    const config: DeepicodeConfig = {
-      apiKey: "test",
-      baseUrl: "https://api.test.com",
-      model: "test-model",
-      maxTokens: 1024,
-      temperature: 0.5,
-      provider: "custom",
-    }
-    const model = buildPiModel(config)
-    expect(model.id).toBe("test-model")
-    expect(model.baseUrl).toBe("https://api.test.com")
-    expect(model.maxTokens).toBe(1024)
-    expect(model.api).toBe("openai-completions")
-  })
-})
 
 describe("loadConfig - 环境变量", () => {
   const OLD_ENV = { ...process.env }
