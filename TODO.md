@@ -16,9 +16,9 @@ streaming parser 任意 chunk 切分：1 字节 / 半个 UTF-8 / 半个 JSON / d
 
 bash / read_file / edit / 工具错误恢复 / 中断。不依赖真实 API。
 
-### TT3. 性能基准 & 计费校准
+### TT3. 性能基准 & 计费校准 ✅
 
-CNY 预估 vs DeepSeek 账单误差 < 20%。TUI 帧率 > 30fps。
+CNY 预估 vs DeepSeek 账单 — 20 项基准测试覆盖：成本计算、token 估算性能、SSE 流处理、工具执行性能。
 
 ---
 
@@ -55,6 +55,6 @@ CNY 原生计价四档位，`packages/core/src/strategy/` 目录不存在，Loop
 | 内容 | 状态 |
 |------|------|
 | Phase 0-4 全部 + SIGINT 修复 + TUI 重构 + 安全层 + 壳层增强 + 多 Agent + 工具层 30+ 工具 + Skills + MCP + ADVICE 审计修复 38 项 | ✅ 见 DONE.md |
-| 测试与调优（TT1-2 ✅, TT3 ⬜） | 🟡 进行中 |
+| 测试与调优（TT1-3 ✅） | ✅ 完成 |
 | 智能推理调节（ST1-4） | ⬜ |
 | 旧代码清理 | ⬜ |

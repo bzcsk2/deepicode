@@ -140,34 +140,52 @@ export class DeepSeekClient implements ChatClient {
     }
 
     const reader = resp.body.getReader()
-    const decoder = new TextDecoder("utf-8")
-    let buf = ""
+    try {
+      const decoder = new TextDecoder("utf-8")
+      let buf = ""
 
-    const toolState = new Map<number, { id?: string; name?: string; args: string }>()
-    const finalized = new Set<number>()
-    let finishReasonYielded = false
-
-    while (true) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
+      const toolState = new Map<number, { id?: string; name?: string; args: string }>()
+      const finalized = new Set<number>()
+      let finishReasonYielded = false
 
       while (true) {
-        const sep = buf.indexOf("\n\n")
-        if (sep < 0) break
-        const raw = buf.slice(0, sep)
-        buf = buf.slice(sep + 2)
+        const { value, done } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
 
-        for (const line of raw.split("\n")) {
-          const trimmed = line.trimEnd()
-          if (!trimmed.startsWith("data:")) continue
-          const payload = trimmed.slice("data:".length).trimStart()
+        while (true) {
+          const sep = buf.indexOf("\n\n")
+          if (sep < 0) break
+          const raw = buf.slice(0, sep)
+          buf = buf.slice(sep + 2)
+
+          // accumulate multi-line data: (OpenAI-compatible SSE may split one event across lines)
+          let dataPayloads: string[] = []
+          for (const line of raw.split("\n")) {
+            const trimmed = line.trimEnd()
+            if (!trimmed.startsWith("data:")) continue
+            dataPayloads.push(trimmed.slice("data:".length).trimStart())
+          }
+          const payload = dataPayloads.join("")
+
           if (payload === "[DONE]") {
+            // finalize any pending tool calls before done
+            if (toolState.size > 0) {
+              let idx = 0
+              for (const tc of toolState.values()) {
+                if (tc.id && tc.name) {
+                  yield { type: "tool_call_end", toolCallIndex: idx, id: tc.id, name: tc.name, arguments: tc.args }
+                  idx++
+                }
+              }
+            }
             if (!finishReasonYielded) {
               yield { type: "done", finishReason: null }
             }
             return
           }
+
+          if (!payload) continue
 
           let json: SSEChunk
           try {
@@ -244,10 +262,12 @@ export class DeepSeekClient implements ChatClient {
           }
         }
       }
-    }
 
-    if (!finishReasonYielded) {
-      yield { type: "done", finishReason: null }
+      if (!finishReasonYielded) {
+        yield { type: "done", finishReason: null }
+      }
+    } finally {
+      reader.releaseLock()
     }
   }
 }
@@ -276,7 +296,9 @@ function errorMessage(error: unknown): string {
 }
 
 function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError"
+  if (error instanceof DOMException && error.name === "AbortError") return true
+  if (error instanceof Error && (error.name === "AbortError" || (error as any).code === "ABORT_ERR")) return true
+  return false
 }
 
 async function sleep(ms: number, signal?: AbortSignal): Promise<void> {

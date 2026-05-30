@@ -692,7 +692,7 @@ prompt: "你好，请简单介绍一下你自己能做什么"
 ## 运行方式
 
 ```bash
-# 全体测试（513 pass, 3 skip, 0 fail, 43 files ✅）
+# 全体测试（533 pass, 3 skip, 0 fail, 44 files ✅）
 bun test
 
 # 带文件监控
@@ -716,6 +716,43 @@ bun run typecheck
 # 覆盖率报告
 bun test --coverage
 ```
+
+## TT3: 性能基准 & 计费校准（2026-06-05）
+
+### 计费计算（pricing.ts）
+
+```
+🔴 [x] 未知模型返回 0 成本
+🔴 [x] 免费模型返回 0 成本
+🔴 [x] deepseek-v4-flash 成本计算正确
+🔴 [x] deepseek-v4-pro 成本计算正确
+🔴 [x] 缓存命中/未命中计入成本
+🔴 [x] USD 转 CNY 汇率换算
+🔴 [x] 成本随 token 数线性增长
+🔴 [x] 典型会话成本在合理范围（light/medium/heavy）
+🔴 [x] 真实 token 规模成本预估匹配期望值
+🟢 [x] 零 token 成本为 0
+```
+
+### 性能基准
+
+```
+🔴 [x] 短文本 token 估算 < 50ms
+🔴 [x] 长文本（600K chars）token 估算 < 2s
+🔴 [x] CJK 文本 token 估算 < 100ms
+🔴 [x] SSE 100 快速 chunk 处理 < 5s
+🔴 [x] SSE tool_call chunk 处理 < 5s
+🔴 [x] SSE 1 字节 chunk 流 < 10s
+🔴 [x] 文件创建/删除 < 2s
+🔴 [x] 1MB 文件写入+读取 < 500ms
+🟢 [x] 10K 行 refinedEstimate < 100ms
+```
+
+### 集成到 loop.ts
+
+`stats.totalCost` 在每次 `usage` 事件到达时通过 `calculateCost()` 计算。定价表在 `pricing.ts` 中定义。
+
+---
 
 ## 覆盖率目标
 

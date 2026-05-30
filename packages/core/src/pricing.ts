@@ -1,0 +1,38 @@
+export interface ModelPricing {
+  inputPer1K: number
+  outputPer1K: number
+  cacheReadPer1K: number
+  cacheWritePer1K: number
+}
+
+export const MODEL_PRICING: Record<string, ModelPricing> = {
+  "deepseek-v4-pro": { inputPer1K: 0.002, outputPer1K: 0.008, cacheReadPer1K: 0.0001, cacheWritePer1K: 0.0005 },
+  "deepseek-v4-flash": { inputPer1K: 0.0005, outputPer1K: 0.002, cacheReadPer1K: 0.00005, cacheWritePer1K: 0.0002 },
+  "deepseek-v4-flash-free": { inputPer1K: 0, outputPer1K: 0, cacheReadPer1K: 0, cacheWritePer1K: 0 },
+  "mimo-v2.5-pro": { inputPer1K: 0.001, outputPer1K: 0.004, cacheReadPer1K: 0.00005, cacheWritePer1K: 0.0002 },
+  "mimo-v2.5": { inputPer1K: 0.0008, outputPer1K: 0.003, cacheReadPer1K: 0.00004, cacheWritePer1K: 0.00015 },
+  "mimo-v2.5-free": { inputPer1K: 0, outputPer1K: 0, cacheReadPer1K: 0, cacheWritePer1K: 0 },
+  "zen-free": { inputPer1K: 0, outputPer1K: 0, cacheReadPer1K: 0, cacheWritePer1K: 0 },
+}
+
+export const USD_TO_CNY = 7.25
+
+export function calculateCost(model: string, promptTokens: number, completionTokens: number, cacheHitTokens = 0, cacheMissTokens = 0): number {
+  const pricing = MODEL_PRICING[model]
+  if (!pricing) return 0
+  const inputTokens = cacheHitTokens + cacheMissTokens
+  const cost =
+    (promptTokens / 1000) * pricing.inputPer1K +
+    (completionTokens / 1000) * pricing.outputPer1K +
+    (cacheHitTokens / 1000) * pricing.cacheReadPer1K +
+    (cacheMissTokens / 1000) * pricing.cacheWritePer1K
+  return cost
+}
+
+export function calculateCostCNY(model: string, promptTokens: number, completionTokens: number, cacheHitTokens = 0, cacheMissTokens = 0): number {
+  return calculateCost(model, promptTokens, completionTokens, cacheHitTokens, cacheMissTokens) * USD_TO_CNY
+}
+
+export function getPricing(model: string): ModelPricing | undefined {
+  return MODEL_PRICING[model]
+}

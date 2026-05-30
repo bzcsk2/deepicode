@@ -6,6 +6,7 @@ import type { ContextManager } from "./context/manager.js"
 import type { StreamingToolExecutor } from "./streaming-executor.js"
 import type { AsyncSessionWriter } from "./session.js"
 import type { FoldDecision } from "./context/token-estimator.js"
+import { calculateCost } from "./pricing.js"
 
 export interface LoopOptions {
   ctx: ContextManager
@@ -31,14 +32,14 @@ const MAX_TURNS = 10
 export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
   const { ctx, client, toolExecutor, toolSpecs, config, signal, sessionWriter, stats, isInterrupted, appendToolResult } = opts
 
+  const contextWindow = ctx['contextWindow'] ?? 128_000  // resolve from ContextManager
+
   // fold check before first turn (non-blocking: kicks off async but uses sync fallback immediately)
   const foldP = ctx.getFoldDecision()
   const fold = await Promise.race([
     foldP,
     new Promise<FoldDecision>(resolve => setTimeout(() => {
-      // tokenizer task becomes orphan — ctx.tokenizer is internal so no explicit cancel;
-      // pool's 5s fallback will resolve and gc the Promise without side effects
-      resolve({ action: "none" as const, ratio: 0, used: 0, total: 128000 })
+      resolve({ action: "none" as const, ratio: 0, used: 0, total: contextWindow })
     }, 100)),
   ])
   if (fold.action === "force") {
@@ -49,6 +50,7 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
 
   let turnCount = 0
   let consecutiveErrors = 0
+  const recentToolCalls = new Map<string, number>()
 
   while (turnCount < MAX_TURNS) {
     turnCount++
@@ -107,6 +109,7 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
           stats.completionTokens += event.usage.completionTokens
           stats.cacheHitTokens += event.usage.cacheHitTokens ?? 0
           stats.cacheMissTokens += event.usage.cacheMissTokens ?? 0
+          stats.totalCost = calculateCost(config.model, stats.promptTokens, stats.completionTokens, stats.cacheHitTokens, stats.cacheMissTokens)
           yield { role: "usage", metadata: { input: event.usage.promptTokens, output: event.usage.completionTokens, cacheHit: event.usage.cacheHitTokens ?? 0, cacheMiss: event.usage.cacheMissTokens ?? 0 } as Record<string, unknown> }
           sessionWriter?.enqueue({ ts: Date.now(), type: "stats", payload: { ...stats } })
           break
@@ -123,13 +126,30 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
               yield { role: "warning", content: "API returned tool_calls finish_reason but no tool calls found", severity: "warning" as const }
               break
             }
+            // duplicate tool call detection: reject if same tool+args called 3+ times
+            for (const tc of toolCalls) {
+              const key = `${tc.function.name}:${tc.function.arguments}`
+              const count = (recentToolCalls.get(key) ?? 0) + 1
+              recentToolCalls.set(key, count)
+              if (count >= 3) {
+                yield { role: "warning", content: `Tool call loop detected: ${tc.function.name} called ${count} times with identical arguments`, severity: "warning" as const }
+              }
+            }
+
             finishedWithToolUse = true
             ctx.log.append({ role: "assistant", content: fullContent || null, tool_calls: toolCalls })
             sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: ctx.buildMessages() })
 
-            for await (const toolEvent of toolExecutor.run(toolCalls, signal, appendToolResult)) {
-              yield toolEvent
-              sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: toolEvent })
+            try {
+              for await (const toolEvent of toolExecutor.run(toolCalls, signal, appendToolResult)) {
+                yield toolEvent
+                sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: toolEvent })
+              }
+            } catch {
+              // append error results for all tool calls if execution is interrupted
+              for (const tc of toolCalls) {
+                appendToolResult(tc, { content: JSON.stringify({ error: "tool execution interrupted" }), isError: true })
+              }
             }
             yield { role: "status", content: "tools_completed" }
             sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: { role: "status", content: "tools_completed" } })

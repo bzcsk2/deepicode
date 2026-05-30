@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { ReasonixEngine } from "../src/engine.js"
 import type { LoopEvent } from "../src/interface.js"
 import { createWriteFileTool } from "../../tools/src/write-file.js"
@@ -6,21 +6,20 @@ import { createReadFileTool } from "../../tools/src/file-ops.js"
 import { createEditTool } from "../../tools/src/edit.js"
 import { createBashTool } from "../../tools/src/shell-exec.js"
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs"
-import { mkdir, writeFile, rm, readFile } from "node:fs/promises"
-import { join, resolve } from "node:path"
+import { join } from "node:path"
 import { tmpdir } from "node:os"
 
-const streamMock = vi.fn<(..._args: any[]) => AsyncGenerator<any>>()
+function g(gen: AsyncGenerator<any>): AsyncGenerator<any> { return gen }
 
-vi.mock("../src/client.js", () => {
-  return {
-    DeepSeekClient: class {
-      chatCompletionsStream(...args: any[]) {
-        return streamMock(...args)
-      }
-    },
+class MockClient {
+  private generators: Array<AsyncGenerator<any>> = []
+  setGenerators(gs: Array<AsyncGenerator<any>>): void { this.generators = [...gs] }
+  chatCompletionsStream(): AsyncGenerator<any> {
+    return this.generators.shift() ?? g((async function* () {})())
   }
-})
+}
+
+const mockClient = new MockClient()
 
 function makeEngine() {
   return new ReasonixEngine({
@@ -29,47 +28,75 @@ function makeEngine() {
     model: "deepseek-v4-flash",
     maxTokens: 256,
     temperature: 0.1,
-  })
+  }, undefined, undefined, mockClient as any)
+}
+
+function genWrite(path: string, content: string) {
+  return g((async function* () {
+    yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-w", name: "write_file", arguments: JSON.stringify({ path, content }) }
+    yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
+    yield { type: "done", finishReason: "tool_calls" }
+  })())
+}
+
+function genRead(path: string) {
+  return g((async function* () {
+    yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-r", name: "read_file", arguments: JSON.stringify({ path }) }
+    yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
+    yield { type: "done", finishReason: "tool_calls" }
+  })())
+}
+
+function genText(text: string) {
+  return g((async function* () {
+    yield { type: "text_delta", delta: text }
+    yield { type: "usage", usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }
+    yield { type: "done", finishReason: "stop" }
+  })())
+}
+
+function genBash(cmd: string) {
+  return g((async function* () {
+    yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-b", name: "bash", arguments: JSON.stringify({ command: cmd }) }
+    yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
+    yield { type: "done", finishReason: "tool_calls" }
+  })())
+}
+
+function genEdit(path: string, oldStr: string, newStr: string) {
+  return g((async function* () {
+    yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-e", name: "edit", arguments: JSON.stringify({ path, old_string: oldStr, new_string: newStr }) }
+    yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
+    yield { type: "done", finishReason: "tool_calls" }
+  })())
+}
+
+function genTool(name: string, args: Record<string, unknown>) {
+  return g((async function* () {
+    yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-1", name, arguments: JSON.stringify(args) }
+    yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
+    yield { type: "done", finishReason: "tool_calls" }
+  })())
 }
 
 describe("TT2: E2E tool chains through engine", () => {
   let tmpDir: string
 
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "e2e-"))
-  })
-
-  afterEach(async () => {
-    rmSync(tmpDir, { recursive: true, force: true })
-  })
+  beforeEach(() => { tmpDir = mkdtempSync(join(tmpdir(), "e2e-")) })
+  afterEach(() => { rmSync(tmpDir, { recursive: true, force: true }) })
 
   it("write_file → read_file chain", async () => {
-    streamMock
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-w", name: "write_file", arguments: JSON.stringify({ path: join(tmpDir, "hello.txt"), content: "hello world" }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-r", name: "read_file", arguments: JSON.stringify({ path: join(tmpDir, "hello.txt") }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "text_delta", delta: "done" }
-        yield { type: "usage", usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }
-        yield { type: "done", finishReason: "stop" }
-      })())
-
+    mockClient.setGenerators([
+      genWrite(join(tmpDir, "hello.txt"), "hello world"),
+      genRead(join(tmpDir, "hello.txt")),
+      genText("done"),
+    ])
     const engine = makeEngine()
     engine.registerTool(createWriteFileTool())
     engine.registerTool(createReadFileTool())
-
     const events: LoopEvent[] = []
     for await (const e of engine.submit("write and read")) events.push(e)
-
     expect(readFileSync(join(tmpDir, "hello.txt"), "utf-8")).toBe("hello world")
-
     const tools = events.filter((e) => e.role === "tool")
     expect(tools).toHaveLength(2)
     expect(tools[0].toolName).toBe("write_file")
@@ -80,39 +107,19 @@ describe("TT2: E2E tool chains through engine", () => {
 
   it("write_file → edit → read_file chain", async () => {
     const filePath = join(tmpDir, "edit-me.txt")
-
-    streamMock
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-w", name: "write_file", arguments: JSON.stringify({ path: filePath, content: "hello world" }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-e", name: "edit", arguments: JSON.stringify({ path: filePath, old_string: "world", new_string: "deepicode" }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-r", name: "read_file", arguments: JSON.stringify({ path: filePath }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "text_delta", delta: "done" }
-        yield { type: "usage", usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }
-        yield { type: "done", finishReason: "stop" }
-      })())
-
+    mockClient.setGenerators([
+      genWrite(filePath, "hello world"),
+      genEdit(filePath, "world", "deepicode"),
+      genRead(filePath),
+      genText("done"),
+    ])
     const engine = makeEngine()
     engine.registerTool(createWriteFileTool())
     engine.registerTool(createEditTool())
     engine.registerTool(createReadFileTool())
-
     const events: LoopEvent[] = []
     for await (const e of engine.submit("write edit read")) events.push(e)
-
     expect(readFileSync(filePath, "utf-8")).toBe("hello deepicode")
-
     const tools = events.filter((e) => e.role === "tool")
     expect(tools).toHaveLength(3)
     expect(tools[0].toolName).toBe("write_file")
@@ -122,25 +129,15 @@ describe("TT2: E2E tool chains through engine", () => {
   })
 
   it("bash execution through engine", async () => {
-    streamMock
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-b", name: "bash", arguments: JSON.stringify({ command: `echo "hello from bash"` }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "text_delta", delta: "bash done" }
-        yield { type: "usage", usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }
-        yield { type: "done", finishReason: "stop" }
-      })())
-
+    mockClient.setGenerators([
+      genBash(`echo "hello from bash"`),
+      genText("bash done"),
+    ])
     const engine = makeEngine()
     engine.permissionEngine.addAllowRule({ toolName: "bash" })
     engine.registerTool(createBashTool())
-
     const events: LoopEvent[] = []
     for await (const e of engine.submit("run bash")) events.push(e)
-
     const toolEvent = events.find((e) => e.role === "tool")
     expect(toolEvent).toBeDefined()
     const result = JSON.parse(toolEvent!.content!)
@@ -150,32 +147,17 @@ describe("TT2: E2E tool chains through engine", () => {
 
   it("bash → read_file cross-verification chain", async () => {
     const filePath = join(tmpDir, "bash-created.txt")
-
-    streamMock
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-b", name: "bash", arguments: JSON.stringify({ command: `echo "created by bash" > ${filePath}` }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-r", name: "read_file", arguments: JSON.stringify({ path: filePath }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "text_delta", delta: "verified" }
-        yield { type: "usage", usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }
-        yield { type: "done", finishReason: "stop" }
-      })())
-
+    mockClient.setGenerators([
+      genBash(`echo "created by bash" > ${filePath}`),
+      genRead(filePath),
+      genText("verified"),
+    ])
     const engine = makeEngine()
     engine.permissionEngine.addAllowRule({ toolName: "bash" })
     engine.registerTool(createBashTool())
     engine.registerTool(createReadFileTool())
-
     const events: LoopEvent[] = []
     for await (const e of engine.submit("bash then read")) events.push(e)
-
     const tools = events.filter((e) => e.role === "tool")
     expect(tools).toHaveLength(2)
     expect(tools[1].content).toContain("created by bash")
@@ -183,123 +165,71 @@ describe("TT2: E2E tool chains through engine", () => {
   })
 
   it("tool error recovery: failing tool returns isError", async () => {
-    streamMock
-      .mockReturnValueOnce((async function* () {
+    mockClient.setGenerators([
+      g((async function* () {
         yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-err", name: "failing_tool", arguments: "{}" }
         yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
         yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "text_delta", delta: "recovered" }
-        yield { type: "usage", usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }
-        yield { type: "done", finishReason: "stop" }
-      })())
-
+      })()),
+      genText("recovered"),
+    ])
     const engine = makeEngine()
     engine.registerTool({
-      name: "failing_tool",
-      description: "a tool that always fails",
+      name: "failing_tool", description: "fails",
       parameters: { type: "object", properties: {} },
-      concurrency: "shared",
-      approval: "read",
-      async execute() {
-        return { content: JSON.stringify({ error: "something went wrong" }), isError: true }
-      },
+      concurrency: "shared", approval: "read",
+      async execute() { return { content: JSON.stringify({ error: "something went wrong" }), isError: true } },
     })
-
     const events: LoopEvent[] = []
     for await (const e of engine.submit("trigger error")) events.push(e)
-
-    // Failing tool should yield an error event (since isError=true, executor yields role:"error")
     const errorEvent = events.find((e) => e.role === "error" && e.toolName === "failing_tool")
     expect(errorEvent).toBeDefined()
     expect(errorEvent!.severity).toBe("error")
     expect(errorEvent!.content).toContain("something went wrong")
-    // The tool result should NOT be in the event with role "tool" (it's an error)
-    const toolResult = events.find((e) => e.role === "tool" && e.toolName === "failing_tool")
-    expect(toolResult).toBeUndefined()
+    expect(events.find((e) => e.role === "tool" && e.toolName === "failing_tool")).toBeUndefined()
   })
 
   it("engine interrupt during tool execution", async () => {
-    streamMock
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-slow", name: "slow_tool", arguments: "{}" }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-
+    mockClient.setGenerators([
+      genTool("slow_tool", {}),
+    ])
     const engine = makeEngine()
     let executed = false
     engine.registerTool({
-      name: "slow_tool",
-      description: "slow tool",
+      name: "slow_tool", description: "slow",
       parameters: { type: "object", properties: {} },
-      concurrency: "shared",
-      approval: "read",
+      concurrency: "shared", approval: "read",
       async execute() {
         executed = true
         await new Promise((r) => setTimeout(r, 1000))
         return { content: "done", isError: false }
       },
     })
-
     const events: LoopEvent[] = []
     const iter = engine.submit("interrupt test")
-
     setTimeout(() => engine.interrupt(), 50)
-
     for await (const e of iter) events.push(e)
-
     expect(executed).toBe(true)
-    const interrupted = events.filter((e: any) => e.role === "status" && e.content === "interrupted")
-    expect(interrupted.length).toBeGreaterThanOrEqual(0)
   })
 
-  it("5-turn tool chain: write → edit → bash verify → grep → read", async () => {
+  it("5-turn tool chain: write → edit → bash → bash → read", async () => {
     const filePath = join(tmpDir, "chain.txt")
-
-    streamMock
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-1", name: "write_file", arguments: JSON.stringify({ path: filePath, content: "step1\nstep2\nstep3" }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-2", name: "edit", arguments: JSON.stringify({ path: filePath, old_string: "step2", new_string: "edited" }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-3", name: "bash", arguments: JSON.stringify({ command: `cat ${filePath}` }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-4", name: "bash", arguments: JSON.stringify({ command: `grep -c "edited" ${filePath}` }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-5", name: "read_file", arguments: JSON.stringify({ path: filePath }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "text_delta", delta: "chain complete" }
-        yield { type: "usage", usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }
-        yield { type: "done", finishReason: "stop" }
-      })())
-
+    mockClient.setGenerators([
+      genWrite(filePath, "step1\nstep2\nstep3"),
+      genEdit(filePath, "step2", "edited"),
+      genBash(`cat ${filePath}`),
+      genBash(`grep -c "edited" ${filePath}`),
+      genRead(filePath),
+      genText("chain complete"),
+    ])
     const engine = makeEngine()
     engine.permissionEngine.addAllowRule({ toolName: "bash" })
     engine.registerTool(createWriteFileTool())
     engine.registerTool(createEditTool())
     engine.registerTool(createBashTool())
     engine.registerTool(createReadFileTool())
-
     const events: LoopEvent[] = []
     for await (const e of engine.submit("5 step chain")) events.push(e)
-
     const tools = events.filter((e) => e.role === "tool")
     expect(tools).toHaveLength(5)
     expect(tools[0].toolName).toBe("write_file")
@@ -307,31 +237,19 @@ describe("TT2: E2E tool chains through engine", () => {
     expect(tools[2].toolName).toBe("bash")
     expect(tools[3].toolName).toBe("bash")
     expect(tools[4].toolName).toBe("read_file")
-
     expect(readFileSync(filePath, "utf-8")).toBe("step1\nedited\nstep3")
     expect(events.some((e) => e.role === "done")).toBe(true)
   })
 
   it("exec-tier tool denied without allow rule", async () => {
-    streamMock
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-deny", name: "bash", arguments: JSON.stringify({ command: 'echo "test"' }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "text_delta", delta: "denied" }
-        yield { type: "usage", usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }
-        yield { type: "done", finishReason: "stop" }
-      })())
-
+    mockClient.setGenerators([
+      genBash(`echo "test"`),
+      genText("denied"),
+    ])
     const engine = makeEngine()
-    // Intentionally NOT adding allow rule for bash — should be denied
     engine.registerTool(createBashTool())
-
     const events: LoopEvent[] = []
     for await (const e of engine.submit("bash without allow")) events.push(e)
-
     const errorEvents = events.filter((e) => e.role === "error" && e.toolName === "bash")
     expect(errorEvents.length).toBeGreaterThanOrEqual(1)
     expect(errorEvents[0].content).toContain("denied")
@@ -339,25 +257,14 @@ describe("TT2: E2E tool chains through engine", () => {
 
   it("should survive write_file with empty content", async () => {
     const filePath = join(tmpDir, "empty.txt")
-
-    streamMock
-      .mockReturnValueOnce((async function* () {
-        yield { type: "tool_call_end", toolCallIndex: 0, id: "tc-empty", name: "write_file", arguments: JSON.stringify({ path: filePath, content: "" }) }
-        yield { type: "usage", usage: { promptTokens: 5, completionTokens: 0, totalTokens: 5 } }
-        yield { type: "done", finishReason: "tool_calls" }
-      })())
-      .mockReturnValueOnce((async function* () {
-        yield { type: "text_delta", delta: "ok" }
-        yield { type: "usage", usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }
-        yield { type: "done", finishReason: "stop" }
-      })())
-
+    mockClient.setGenerators([
+      genWrite(filePath, ""),
+      genText("ok"),
+    ])
     const engine = makeEngine()
     engine.registerTool(createWriteFileTool())
-
     const events: LoopEvent[] = []
     for await (const e of engine.submit("empty file")) events.push(e)
-
     expect(existsSync(filePath)).toBe(true)
     expect(readFileSync(filePath, "utf-8")).toBe("")
   })

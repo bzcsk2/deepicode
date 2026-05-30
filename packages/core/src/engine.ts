@@ -60,10 +60,10 @@ export class ReasonixEngine implements CoreEngine {
   /** prefix.build 缓存：避免每次 submit 重复重建（P3-4-2） */
   private prefixCacheKey = ""
 
-  constructor(config: DeepicodeConfig, onStart?: () => void, sessionId?: string) {
+  constructor(config: DeepicodeConfig, onStart?: () => void, sessionId?: string, customClient?: DeepSeekClient) {
     this.config = config
     this.ctx = new ContextManager(config.maxContextRounds, config.contextWindow)
-    this.client = new DeepSeekClient()
+    this.client = customClient ?? new DeepSeekClient()
     this.sessionId = sessionId ?? randomUUID()
     this.currentAgent = "build"
     this.permissionEngine = new PermissionEngine()
