@@ -30,6 +30,14 @@ export function DeepiPromptInput({ onSubmit, isLoading, disabled, onCancel }: De
   useInput((_input, key) => {
     if (disabled) return;
 
+    // Ctrl+C character (when raw mode works properly)
+    if (_input === '\x03' || (key.ctrl && _input === 'c')) {
+      if (isLoading) {
+        onCancel();
+      }
+      return;
+    }
+
     // Esc × 2 to interrupt during loading (Esc IS a key event, unlike Ctrl+C)
     if (key.escape && isLoading) {
       const now = Date.now();

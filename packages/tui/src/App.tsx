@@ -1,8 +1,9 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Box, Text, AlternateScreen } from '@deepicode/ink';
+import { Box, Text, AlternateScreen, instances, SHOW_CURSOR, EXIT_ALT_SCREEN, useInput } from '@deepicode/ink';
+import { writeSync } from 'node:fs';
 import type { ReasonixEngine } from '@deepicode/core';
 import type { DeepicodeConfig } from '@deepicode/core';
-import { PROVIDERS, saveLastConfig } from '@deepicode/core';
+import { PROVIDERS, AGENTS, saveLastConfig } from '@deepicode/core';
 import { createBridge, type BridgeState } from './bridge.js';
 import { DeepiMessages } from './DeepiMessages.js';
 import { DeepiPromptInput } from './DeepiPromptInput.js';
@@ -12,6 +13,51 @@ import { StatusBar } from './StatusBar.js';
 import { FullscreenLayout } from './FullscreenLayout.js';
 import { isFullscreenEnvEnabled } from './fullscreen.js';
 import { ModelPicker } from './ModelPicker.js';
+
+// ---- Module-level interrupt state (shared by SIGINT handler + useInput \x03 handler) ----
+
+let tuiState: 'idle' | 'loading' = 'idle';
+export function setTUIState(s: 'idle' | 'loading') { tuiState = s; }
+
+let exitTimer: ReturnType<typeof setTimeout> | null = null;
+let exitPending = false;
+
+// Module-level callbacks set by the App component on mount
+let _cancel: (() => void) | null = null;
+let _interrupt: (() => void) | null = null;
+let _setStatusMsg: ((m: string | null) => void) | null = null;
+
+function cleanupTerminal(): void {
+  try {
+    const inst = instances.get(process.stdout);
+    if (inst) inst.detachForShutdown();
+  } catch {}
+  try { writeSync(1, EXIT_ALT_SCREEN); } catch {}
+  try { writeSync(1, SHOW_CURSOR); } catch {}
+}
+
+function doInterrupt(): void {
+  if (exitPending) return;
+
+  if (tuiState === 'loading') {
+    _cancel?.();
+    return;
+  }
+
+  // Idle: double-tap to exit
+  if (exitTimer) {
+    clearTimeout(exitTimer);
+    exitTimer = null;
+    exitPending = true;
+    _interrupt?.();
+    cleanupTerminal();
+    process.exit(0); // synchronous — setTimeout is unreliable inside signal handlers
+    return;
+  }
+
+  exitTimer = setTimeout(() => { exitTimer = null; _setStatusMsg?.(null); }, 2000);
+  _setStatusMsg?.('Press Ctrl+C again to exit');
+}
 
 const initialState: BridgeState = {
   messages: [],
@@ -43,41 +89,25 @@ export function App({ engine, config }: AppProps) {
   const contextTotal = config.contextWindow ?? 128_000;
   const shuttingDown = useRef(false);
   const engineRef = useRef(engine);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  // Linux: Ctrl+C → SIGINT (not a character event), Ink can't capture it.
-  // Handle interrupt/exit entirely via the process signal.
-  const isLoadingRef = useRef(bridgeState.isLoading);
-  isLoadingRef.current = bridgeState.isLoading;
+  // Wire module-level callbacks for doInterrupt()
+  _cancel = () => bridgeRef.current.cancel();
+  _interrupt = () => engineRef.current.interrupt();
+  _setStatusMsg = setStatusMessage;
 
+  // SIGINT handler (Linux: Ctrl+C generates signal, not character)
   useEffect(() => {
-    let exitPending = false;
-    let exitTimer: ReturnType<typeof setTimeout> | null = null;
+    process.on('SIGINT', doInterrupt);
+    return () => { process.off('SIGINT', doInterrupt); };
+  }, []);
 
-    const onSigint = () => {
-      if (isLoadingRef.current) {
-        bridgeRef.current.cancel();
-        return;
-      }
-      if (exitPending) {
-        shuttingDown.current = true;
-        engineRef.current.interrupt();
-        setTimeout(() => process.exit(0), 300);
-        return;
-      }
-      exitPending = true;
-      setBridgeState(prev => ({
-        ...prev,
-        messages: [...prev.messages, { role: 'assistant' as const, content: 'Press Ctrl+C again to exit' }],
-      }));
-      exitTimer = setTimeout(() => { exitPending = false; }, 2000);
-    };
-
-    process.on('SIGINT', onSigint);
-    return () => {
-      process.off('SIGINT', onSigint);
-      if (exitTimer) clearTimeout(exitTimer);
-    };
-  }, []); // register once, read latest via refs
+  // \x03 character handler (raw mode working properly — Ctrl+C arrives as character)
+  useInput((input, key) => {
+    if (input === '\x03' || (key.ctrl && input === 'c')) {
+      doInterrupt();
+    }
+  });
 
   const handleCancel = useCallback(() => {
     bridgeRef.current.cancel();
@@ -87,6 +117,7 @@ export function App({ engine, config }: AppProps) {
   const [activeProvider, setActiveProvider] = useState(config.provider ?? 'zen');
   const [activeModel, setActiveModel] = useState(config.model);
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [activeAgent, setActiveAgent] = useState(engine.getAgentName?.() ?? 'build');
 
   const handleSubmit = useCallback((text: string) => {
     if (text === '/exit' || text === '/bye') {
@@ -96,18 +127,33 @@ export function App({ engine, config }: AppProps) {
         ...prev,
         messages: [...prev.messages, { role: 'assistant' as const, content: 'Shutting down...' }],
       }));
-      setTimeout(() => process.exit(0), 300);
+      cleanupTerminal();
+      setTimeout(() => process.exit(0), 100);
       return;
     }
     if (text === '/help') {
+      const agentList = Object.values(AGENTS).map(a => `${a.name} — ${a.label}`).join('\n');
       setBridgeState(prev => ({
         ...prev,
-        messages: [...prev.messages, { role: 'assistant' as const, content: 'Commands: /exit, /bye, /help, /model' }],
+        messages: [...prev.messages, {
+          role: 'assistant' as const,
+          content: `Commands:\n  /exit, /bye  — exit\n  /help        — show this\n  /model       — switch provider/model\n  /agent       — switch agent\n\nAgents:\n${agentList}\n\nCurrent: ${AGENTS[activeAgent]?.label ?? activeAgent}`,
+        }],
       }));
       return;
     }
     if (text === '/model') {
       setShowModelPicker(true);
+      return;
+    }
+    if (text === '/agent') {
+      const next = activeAgent === 'build' ? 'plan' : 'build';
+      const label = engineRef.current.switchAgent(next);
+      setActiveAgent(next);
+      setBridgeState(prev => ({
+        ...prev,
+        messages: [...prev.messages, { role: 'assistant' as const, content: `Switched to ${label}` }],
+      }));
       return;
     }
     bridge.submit(text);
@@ -184,12 +230,14 @@ export function App({ engine, config }: AppProps) {
       <StatusBar
         model={activeModel}
         provider={providerLabel}
+        agent={AGENTS[activeAgent]?.label ?? activeAgent}
         inputTokens={bridgeState.tokens.input}
         outputTokens={bridgeState.tokens.output}
         cacheHitTokens={bridgeState.tokens.cacheHit}
         cacheMissTokens={bridgeState.tokens.cacheMiss}
         contextUsed={bridgeState.contextUsage}
         contextTotal={contextTotal}
+        statusMessage={statusMessage}
       />
     </Box>
   );

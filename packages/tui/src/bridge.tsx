@@ -1,5 +1,6 @@
 import type { ReasonixEngine } from '@deepicode/core';
 import type { ChatMessage } from '@deepicode/core';
+import { setTUIState } from './App.js';
 
 export interface ToolStatus {
   name: string;
@@ -32,6 +33,7 @@ export function createBridge(
   let activeAssistantMsg: ChatMessage | null = null;
 
   const submit = async (text: string) => {
+    setTUIState('loading');
     setState(prev => ({
       ...prev,
       messages: [...prev.messages, { role: 'user' as const, content: text }],
@@ -165,6 +167,7 @@ export function createBridge(
       const msg = e instanceof Error ? e.message : String(e);
       setState(prev => ({ ...prev, error: msg }));
     } finally {
+      setTUIState('idle');
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -177,6 +180,7 @@ export function createBridge(
 
   const cancel = () => {
     engine.interrupt();
+    setTUIState('idle');
     // Immediately reset loading state so the UI is responsive even if
     // the AsyncGenerator takes a moment to drain interrupted events
     setState(prev => ({

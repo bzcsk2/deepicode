@@ -9,6 +9,7 @@ import { AsyncSessionWriter, SessionLoader } from "./session.js"
 import { runLoop } from "./loop.js"
 import type { LoopOptions } from "./loop.js"
 import { PermissionEngine, HookManager } from "@deepicode/security"
+import { getAgent, agentConfigFor } from "./agent.js"
 
 /**
  * ReasonixEngine 是 Deepicode 的核心引擎，负责：
@@ -52,6 +53,8 @@ export class ReasonixEngine implements CoreEngine {
   permissionEngine: PermissionEngine
   /** Hook 管理器：tool call 前后 + loop 事件 */
   hookManager: HookManager
+  /** 当前活跃 agent 名称 */
+  private currentAgent: string
 
   /** prefix.build 缓存：避免每次 submit 重复重建（P3-4-2） */
   private prefixCacheKey = ""
@@ -61,6 +64,7 @@ export class ReasonixEngine implements CoreEngine {
     this.ctx = new ContextManager(config.maxContextRounds, config.contextWindow)
     this.client = new DeepSeekClient()
     this.sessionId = sessionId ?? randomUUID()
+    this.currentAgent = "build"
     this.permissionEngine = new PermissionEngine()
     this.hookManager = new HookManager()
     this.toolExecutor = new StreamingToolExecutor(this.tools, this.sessionId, undefined, this.permissionEngine, this.hookManager)
@@ -111,10 +115,22 @@ export class ReasonixEngine implements CoreEngine {
     Object.assign(this.config, partial)
   }
 
-  /** 预留：切换 agent（当前为空实现） */
-  switchAgent(_agentName: string): void {}
-  /** 预留：处理 tier 决策（当前为空实现） */
-  resolveTierDecision(_tier: string): void {}
+  /** 切换 agent，返回 agent label */
+  switchAgent(agentName: string): string {
+    const def = getAgent(agentName)
+    this.currentAgent = def.name
+    return def.label
+  }
+
+  /** 处理 tier 决策（由权限引擎发起，外部 UI 通过此方法响应） */
+  resolveTierDecision(_tier: string): void {
+    // 由外部 UI（如 TUI）覆盖此方法的实现来提供交互式批准
+  }
+
+  /** 获取当前 agent 名称 */
+  getAgentName(): string {
+    return this.currentAgent
+  }
 
   /**
    * 获取当前引擎状态的快照，包括消息列表、流式状态、待执行工具等
@@ -129,15 +145,21 @@ export class ReasonixEngine implements CoreEngine {
       isStreaming,
       streamingMessage,
       pendingToolCalls,
-      currentAgent: "build",
+      currentAgent: this.currentAgent,
       stats: { ...this.stats },
     }
   }
 
-  async *submit(userInput: string, _agentConfig?: AgentConfig): AsyncGenerator<LoopEvent> {
+  async *submit(userInput: string, agentConfig?: AgentConfig): AsyncGenerator<LoopEvent> {
     this._interrupted = false
     const abortController = new AbortController()
     this.activeAbortController = abortController
+
+    // 合并 agent 配置：优先使用传入的 agentConfig，否则用当前 agent 的默认配置
+    const ac = agentConfig ?? agentConfigFor(this.currentAgent)
+    const systemPrompt = ac.systemPrompt ?? this.ctx.prefix.messages[0]?.content ?? ""
+    this.ctx.prefix.build(systemPrompt)
+
     this.ctx.startTurn()
     this.ctx.log.append({ role: "user", content: userInput })
     this.sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: this.ctx.buildMessages() })
@@ -145,6 +167,7 @@ export class ReasonixEngine implements CoreEngine {
     try {
       const toolSpecs: ToolSpec[] = []
       for (const tool of this.tools.values()) {
+        if (ac.toolNames && !ac.toolNames.includes(tool.name)) continue
         toolSpecs.push({
           type: "function",
           function: {
@@ -155,7 +178,6 @@ export class ReasonixEngine implements CoreEngine {
         })
       }
 
-      const systemPrompt = this.ctx.prefix.messages[0]?.content ?? ""
       const toolSpecsKey = JSON.stringify(toolSpecs)
       const cacheKey = `${systemPrompt}|${toolSpecsKey}`
       if (cacheKey !== this.prefixCacheKey) {

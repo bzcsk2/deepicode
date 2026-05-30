@@ -1,4 +1,5 @@
 import { stdin as input, stdout as output, stderr as errorOutput } from "node:process"
+import { writeSync } from "node:fs"
 import { loadConfig } from "../../core/src/config.js"
 import { ReasonixEngine } from "../../core/src/engine.js"
 import { buildSystemPrompt } from "../../core/src/system-prompt.js"
@@ -97,10 +98,17 @@ async function runPipeMode(engine: ReasonixEngine): Promise<void> {
 }
 
 async function runTUIMode(engine: ReasonixEngine, config: ReturnType<typeof loadConfig>): Promise<void> {
-  const { waitUntilExit } = await render(
-    React.createElement(App, { engine, config })
-  );
-  await waitUntilExit();
+  try {
+    const { waitUntilExit } = await render(
+      React.createElement(App, { engine, config }),
+      { exitOnCtrlC: false }  // Don't let Ink intercept \x03 — we handle SIGINT ourselves
+    );
+    await waitUntilExit();
+  } finally {
+    // Ensure terminal is restored even if render throws
+    try { writeSync(1, '\x1b[?1049l'); } catch {} // EXIT_ALT_SCREEN
+    try { writeSync(1, '\x1b[?25h'); } catch {}   // SHOW_CURSOR
+  }
 }
 
 main().catch((e) => {

@@ -6,7 +6,7 @@
 - `最小完成`：具备可用闭环，但未达到实施计划中的完整版要求。
 - `部分完成`：只完成子集能力，仍需后续补齐。
 
-最后更新：2026-05-30（安全层 — PermissionEngine + HookManager + FileSnapshot）
+最后更新：2026-05-30（壳层增强 + 多 Agent — AppState + QueryEngine + Build/Plan Agent）
 
 ## 第八轮：TUI 交互打磨（2026-05-30）
 
@@ -36,12 +36,41 @@
 - `ModelPicker.tsx`：`tryReadClipboard()` 支持 wl-paste → xclip → xsel 三种工具回退
 - 终端 bracketed paste 支持：多字符 `_input` 直接追加到输入
 
-### 中断/退出（Ctrl+C）
+## SIGINT / Raw Mode 修复（2026-05-30）✅ 已解决
 
-- **根因**：Linux 终端 Ctrl+C = SIGINT 信号，不经过 Ink 的 `useInput`
-- `App.tsx`：`process.on('SIGINT')` 全局接管——加载中取消生成，空闲双击退出
-- `DeepiPromptInput.tsx`：保留 Esc × 2 中断（Esc 是真正的按键事件），删除死代码 Ctrl+C handler
-- ⚠ **未完全解决**：SIGINT 后 raw mode 恢复仍有问题
+### 根因
+
+`exitOnCtrlC` 默认为 `true`。Ink 渲染 `<App>` 时把此选项传入。当 Linux 上 Ctrl+C 触发 `\x03` 字符到达 stdin 时，Ink 内部的 `App.handleInput('\x03')` 直接调用 `handleExit()` → `setRawMode(false)` + `unmount()`，不等 SIGINT handler 处理就把 raw mode 关了、React 树卸了。终端进入损坏状态：光标跳屏幕顶部、输入失效。
+
+### 修复内容
+
+| 文件 | 改动 |
+|------|------|
+| `packages/cli/src/tui.ts` | `render()` 传 `{ exitOnCtrlC: false }` — **核心修复**，禁止 Ink 内部拦截 `\x03` |
+| `packages/tui/src/App.tsx` | 新增 `cleanupTerminal()`（`detachForShutdown` + writeSync 安全网）、模块级 `tuiState`/`setTUIState`、`lastInterruptTime` 去抖 |
+| `packages/tui/src/bridge.tsx` | `submit()` 开始调 `setTUIState('loading')`，finally/cancel 调 `setTUIState('idle')` |
+| `packages/tui/src/DeepiPromptInput.tsx` | 新增 `\x03` / `Ctrl+C` 字符检测，raw mode 正常时字符路径直通 |
+| `packages/tui/src/StatusBar.tsx` | 新增 `statusMessage` prop，显示退出确认提示 |
+| `packages/cli/src/tui.ts` | `runTUIMode()` 加 try/finally + writeSync 安全网 |
+
+### 中断行为
+
+- **加载中 Ctrl+C**：取消当前操作，回到输入状态，raw mode 保持
+- **空闲双击 Ctrl+C**：第一次 StatusBar 提示"Press Ctrl+C again to exit"，2 秒内第二次→`cleanupTerminal()`→退出
+- **`/exit`/`/bye`**：同样走 `cleanupTerminal()` 恢复终端
+
+### 验证
+
+- `bun run typecheck` 零错误
+- `bun test` 66 pass / 3 skip / 0 fail
+
+### 参考来源
+
+借鉴 best-claude-code（`/vol4/Agent/best-claude-code`）的 gracefulShutdown 设计理念，利用 Deepicode Ink 框架已有的 `detachForShutdown()`、`instances`、signal-exit 基础设施。
+
+---
+
+### 中断/退出（Ctrl+C）
 
 ### 配置更新
 
@@ -303,8 +332,20 @@
 
 未完成：
 
-- `packages/shell/src/index.ts` 仍是 placeholder。
-- 尚未实现状态管理、EventStream/EventBus、多 Agent 系统。
+- 尚无 E2E 测试覆盖 TUI 流程。
+
+### Step 3.2 壳层增强：状态管理 + 多 Agent
+
+状态：完成（2026-05-30）
+
+- `packages/shell/src/state.ts`：`AppState` 类，集中式状态管理（消息/流式文本/推理文本/活跃工具/token 统计/agent/警告/错误），subscribe/notify 发布订阅模式
+- `packages/shell/src/index.ts`：导出 `AppState` 及关联类型
+- `packages/core/src/agent.ts`：`AGENTS` 预设表（Build Agent 全工具 / Plan Agent 只读）
+- `packages/core/src/query-engine.ts`：`QueryEngine` 类，三模式——`stream()` 生成器 / `query()` Promise / `onEvent()` 推送订阅
+- `engine.ts`：`switchAgent()` 返回 agent label；`submit()` 接收 AgentConfig 过滤工具集；`getState()` 返回真实 agent 名
+- `interface.ts`：`switchAgent()` 返回类型改为 `string`，新增 `getAgentName()`
+- TUI：`/agent` 命令切换 build/plan；`/help` 列出 agent；StatusBar 显示 `[agent]`
+- `bun run typecheck` 零错误，`bun test` 66 pass / 3 skip
 
 ### Step 3.1 TUI 功能增量：Provider 抽象层 + `/model` 命令
 
@@ -413,6 +454,16 @@
 - `packages/security/src/hooks.ts`：beforeToolCall / afterToolCall / onLoopEvent 三个 Hook 点
 - `packages/security/src/snapshot.ts`：`.deepicode_patches/` Git 风格文件快照与毫秒级恢复
 - 集成到 streaming-executor.ts（执行前权限检查）和 engine.ts（构造时创建实例，submit 中 onLoopEvent）
+- `bun run typecheck` 零错误，`bun test` 66 pass / 3 skip
+
+## 第十轮：壳层增强 + 多 Agent（AppState + QueryEngine + Build/Plan Agent，2026-05-30）
+
+- `packages/shell/src/state.ts`：`AppState` 类，集中式状态管理（消息/流式文本/推理文本/活跃工具/token/agent/警告/错误），subscribe/notify 发布订阅
+- `packages/core/src/agent.ts`：`AGENTS` 预设表——**Build Agent**（全工具：bash/read/write/edit/list_dir/grep/todowrite）+ **Plan Agent**（只读：read/list_dir/grep/todowrite）
+- `packages/core/src/query-engine.ts`：`QueryEngine` 类，`stream()` 生成器 + `query()` Promise + `onEvent()` 推送三模式
+- `engine.ts`：`switchAgent()` 实现 + `submit()` 使用 AgentConfig 过滤工具集 + `getState()` 返回真实 agent 名
+- `interface.ts`：`switchAgent()` 返回 string + 新增 `getAgentName()`
+- TUI 集成：`/agent` 命令切换 build/plan、`/help` 列出可用 agent、StatusBar 显示 `[agent]`
 - `bun run typecheck` 零错误，`bun test` 66 pass / 3 skip
 
 ## Phase 5：安全层实现

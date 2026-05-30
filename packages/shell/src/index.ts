@@ -1,2 +1,3 @@
-// Shell layer — placeholder for Phase 3
-export {}
+export { AppState } from "./state.js"
+export type { AppStateSnapshot, StateListener, ToolStatus } from "./state.js"
+

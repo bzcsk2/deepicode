@@ -89,7 +89,8 @@ export interface CoreEngine {
   getState(): AgentState
   interrupt(): void
   registerTool(tool: AgentTool): void
-  switchAgent(agentName: string): void
+  switchAgent(agentName: string): string
+  getAgentName(): string
   resolveTierDecision(tier: string): void
 }
 

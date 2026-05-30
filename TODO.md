@@ -17,6 +17,7 @@
 | TM1+TM2 | ChatClient接口 + PROVIDERS预设 + ModelPicker组件 | 2026-05-30 |
 | TUI打磨 | 状态栏重设计、光标修复、粘贴、模型持久化 | 2026-05-30 |
 | Phase 4 | 工具层8工具（read/write/edit/bash/list_dir/grep/todowrite + hash-edit + fuzzy-edit + stale-read + repair） | 2026-05-29~30 |
+| Phase 3 | 壳层增强（AppState + QueryEngine + Build/Plan Agent） | 2026-05-30 |
 
 ---
 
@@ -52,25 +53,27 @@
 
 ---
 
-## 第二优先：壳层增强 + 多 Agent
+## 第二优先：壳层增强 + 多 Agent ✅
 
-### SH1. 集中式状态管理
+> ✅ SH1+SH2+SH3 已完成。AppState 集中式状态管理、QueryEngine 双模式事件系统、Build Agent + Plan Agent 多 Agent 系统。已集成到 engine.ts 和 TUI。`bun run typecheck` 零错误，`bun test` 66 pass。
+
+### SH1. 集中式状态管理 ✅
 
 参考：**CC** `src/state/AppState.tsx`
 
-当前状态：`packages/shell/src/` 仅 placeholder `index.ts`。bridge.tsx 已承担部分状态管理（BridgeState）。
+实现：`packages/shell/src/state.ts`。`AppState` 类，持有完整 UI 状态（消息/流式文本/推理文本/活跃工具/token 统计/agent/警告/错误），subscribe/notify 发布订阅模式。
 
-### SH2. 双模式事件系统
+### SH2. 双模式事件系统 ✅
 
 参考：**CC** `src/QueryEngine.ts`
 
-当前状态：AsyncGenerator 事件流已工作（loop.ts → bridge.tsx → React state）。
+实现：`packages/core/src/query-engine.ts`。`QueryEngine` 类，`stream()` 异步生成器模式 + `query()` Promise 简捷模式 + `onEvent()` 推送订阅模式。
 
-### SH3. 多 Agent 系统
+### SH3. 多 Agent 系统 ✅
 
 参考：**OC** `packages/opencode/src/tool/task.ts` + `plan.ts`
 
-目标：Build Agent（全工具）+ Plan Agent（只读）。
+实现：`packages/core/src/agent.ts`。`AGENTS` 预设表——**Build Agent**（全部工具：bash/read/write/edit/list_dir/grep/todowrite）和 **Plan Agent**（只读：read/list_dir/grep/todowrite）。`switchAgent()` 引擎集成 + 工具过滤 + TUI `/agent` 命令切换 + StatusBar 显示当前 agent。
 
 ---
 
@@ -143,7 +146,7 @@ CNY 预估 vs DeepSeek 账单误差 < 20%。TUI 帧率 > 30fps。
 | 0 | 脚手架 + 核心引擎 | — | ✅ |
 | 0 | TUI 重构（Ink框架+7组件+审计+功能增量） | 4 | ✅ |
 | 1 | 安全层（PermissionEngine + HookManager + FileSnapshot） | 3 | ✅ |
-| 2 | 壳层增强 + 多 Agent | 3 | ⬜ |
+| 2 | 壳层增强 + 多 Agent（AppState + QueryEngine + Build/Plan Agent） | 3 | ✅ |
 | 3 | 智能推理调节 | 4 | ⬜ |
 | 4 | 工具层生态（核心8工具已✅） | 3 | ⬜ |
 | 5 | 测试与调优 | 3 | ⬜ |
