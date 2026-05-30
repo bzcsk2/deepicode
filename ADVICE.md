@@ -1,58 +1,41 @@
 # Deepicode 代码审查与建议
 
-**最后更新**: 2026-06-05（B1 afterToolCall 已修复验证，B2/B3/B4 未修复）
+**最后更新**: 2026-06-05（B1/B2 已修复，新增 B5/B6）
 
 > 已修复项见 `DONE.md`。
 
 ---
 
-## 〇、测试发现的 Bug（TT1-TT3 533 项测试）
+## 〇、测试发现的 Bug
 
-### 未修复
+### 代码 Bug（未修复）
 
-#### ~~B1. `afterToolCall` 异常传播（Round 十六）~~ ✅ 已修复
-
-| 项 | 内容 |
-|---|------|
-| **位置** | `packages/security/src/hooks.ts:54` |
-| **症状** | ~~`afterToolCall` 回调抛异常时未被吞掉~~ |
-| **修复验证** | 源码已有 `try { await hooks.afterToolCall(...) } catch { /* swallow */ }`，M14 测试确认第二个 hook 正常执行 |
-
-#### B2. `McpAuth.set()` 返回 `"stored"` 而非 `"not_implemented"`
+#### B5. `repair.ts` 组合策略缺失（2026-06-05 测试发现）
 
 | 项 | 内容 |
 |---|------|
-| **位置** | `packages/mcp/src/mcp-tools.ts` — `McpAuth.set` handler |
-| **症状** | stub 实现返回 `{status: "stored"}`，但 TEST.md 预期/文档说明是 `"not_implemented"` |
-| **测试** | `mcp-tools.test.ts` — "set validate" 通过是因为断言匹配了实际返回值 |
-| **原因** | stub 作者选择了静默成功而非明确拒绝 |
-| **修复** | 明确返回 `{status: "not_implemented", message: "MCP auth storage not implemented"}` 或将 stub 真正实现 |
+| **位置** | `packages/core/src/context/repair.ts` — `scavenge()` 策略 1e + 1f |
+| **症状** | `{"key": "value` 同时有未闭合括号和未闭合引号，1e 补括号得到 `{"key": "value}`（无效 JSON），1f 补引号得到 `{"key": "value"`（仍缺括号），都不通过。真正的修复需要 1e+1f 组合补全为 `{"key": "value"}` |
+| **测试** | `repair.test.ts` — "should fix unclosed quote+brace" 仅测试了 `{"key": "value`（有空格在末尾），未覆盖 `{"key": "value`（无空格） |
+| **影响** | 低概率 — `{"key": "value` 格式的截断 rarely 出现 |
+| **修复** | 新增 1g 策略：先补引号再补括号，组合修复 |
 
-#### B3. `sleep-clamp` 测试预期值过时（Known Failure）
-
-| 项 | 内容 |
-|---|------|
-| **位置** | `packages/tools/__tests__/sleep.test.ts` — clamped test |
-| **症状** | `duration_ms: 500000` 被 `Math.min(_, 300000)` 截断到 300000，但测试断言仍用旧预期值 |
-| **测试** | 单独运行可见断言不符 |
-| **原因** | 代码改过 clamp 逻辑但测试未同步更新 |
-| **修复** | 更新测试预期值匹配当前 clamp 行为，或改用 `vi.spyOn` 验证 `Math.min` 被正确调用 |
-
-#### B4. `bash-integration-concurrent` 竞态（Known Failure，偶发）
+#### B6. `SessionLoader` 系统消息不过滤（2026-06-05 测试发现）
 
 | 项 | 内容 |
 |---|------|
-| **位置** | 集成测试 — 所有工具文件同批运行时的 Vitest 线程池竞态 |
-| **症状** | 偶发失败，单独运行通过 |
-| **原因** | 多个测试共享的临时目录/进程文件出现竞争 |
-| **修复** | 每个测试使用 `mkdtempSync` 独立目录；或标记为 `--pool=forks` 避免线程共享 |
+| **位置** | `packages/core/src/session.ts` — `SessionLoader.read()` |
+| **症状** | session 恢复时，之前存储的系统消息 + 当前引擎注入的系统消息叠加，造成双份 system prompt |
+| **测试** | `session.test.ts` — system messages preserved ✅ 确认了"存什么返回什么"的当前行为 |
+| **影响** | 中等 — 对话恢复后 system prompt 翻倍，可能影响模型行为 |
+| **修复** | `SessionLoader.read()` 返回前过滤 `role: "system"` 的消息，由 Engine 重新注入 |
 
-### 已修复（本轮）
+### 代码 Bug（已修复）
 
 | Bug | 位置 | 原因 | 修复 |
 |-----|------|------|------|
 | B1 | `hooks.ts:51-57` | `runAfterToolCall` 回调抛异常中断后续 hook | try-catch 包裹每个回调 |
-| B2 | `auth.ts:36` | McpAuth.set() stub 返回 `"stored"` 误导 | 改为 `"not_implemented"` |
+| B2 | `mcp-tools.ts` | McpAuth.set() stub 返回 `"stored"` 误导 | 改为 `"not_implemented"` |
 | MockSseServer 连接泄漏 | `mock-sse-server.ts` | `server.close()` 未销毁 keep-alive socket | 追踪 `Set<Socket>` + `stop()` 时 `sock.destroy()` |
 | CJK 双重计数 | `token-estimator.ts:14-18` | CJK 字符同时匹配 `CJK_RE` 和 `PUNCT_RE` | `PUNCT_RE` 排除 CJK 范围 |
 
