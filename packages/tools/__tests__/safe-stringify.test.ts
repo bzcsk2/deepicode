@@ -9,7 +9,7 @@ describe("safeStringify", () => {
 
   it("should truncate at maxLen with notice", () => {
     const r = safeStringify({ data: "x".repeat(500) }, 50)
-    expect(r).toContain("[truncated")
+    expect(r).toContain("_truncated")
     expect(r.length).toBeLessThan(150)
   })
 

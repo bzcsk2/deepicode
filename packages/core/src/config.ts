@@ -85,24 +85,29 @@ function loadLastConfig(): { provider?: string; model?: string; baseUrl?: string
   }
 }
 
-function loadApiKeyFromProjectFile(): string | undefined {
+function loadApiKeyFromProjectFile(provider?: string): string | undefined {
   try {
     const p = resolve(process.cwd(), "api-key")
     const raw = readFileSync(p, "utf-8")
-    const match =
-      raw.match(/^\s*export\s+DEEPSEEK_API_KEY\s*=\s*"([^"]+)"\s*$/m) ??
-      raw.match(/^\s*export\s+DEEPSEEK_API_KEY\s*=\s*'([^']+)'\s*$/m) ??
-      raw.match(/^\s*DEEPSEEK_API_KEY\s*=\s*"([^"]+)"\s*$/m) ??
-      raw.match(/^\s*DEEPSEEK_API_KEY\s*=\s*'([^']+)'\s*$/m)
-    
-    const key = match?.[1]?.trim()
-    if (key) return key
-    
+
+    // Try provider-specific env var (e.g. DEEPSEEK_API_KEY, ZEN_API_KEY, MIMO_API_KEY)
+    const providers = provider ? [provider.toUpperCase()] : ["DEEPSEEK", "ZEN", "MIMO"]
+    for (const pv of providers) {
+      const envName = `${pv}_API_KEY`
+      const match =
+        raw.match(new RegExp(`^\\s*export\\s+${envName}\\s*=\\s*"([^"]+)"\\s*$`, "m")) ??
+        raw.match(new RegExp(`^\\s*export\\s+${envName}\\s*=\\s*'([^']+)'\\s*$`, "m")) ??
+        raw.match(new RegExp(`^\\s*${envName}\\s*=\\s*"([^"]+)"\\s*$`, "m")) ??
+        raw.match(new RegExp(`^\\s*${envName}\\s*=\\s*'([^']+)'\\s*$`, "m"))
+      const key = match?.[1]?.trim()
+      if (key) return key
+    }
+
     const bareKey = raw.trim()
     if (bareKey.startsWith("sk-") || bareKey.startsWith("ak-")) {
       return bareKey
     }
-    
+
     return undefined
   } catch {
     return undefined
@@ -122,8 +127,8 @@ export function loadConfig(): DeepicodeConfig {
 
   const apiKeyEnvVar = getApiKeyEnvVar(provider)
   let apiKey = process.env[apiKeyEnvVar] ?? providerCfg?.defaultKey ?? ""
-  if (!apiKey && provider === "deepseek") {
-    apiKey = loadApiKeyFromProjectFile() ?? ""
+  if (!apiKey) {
+    apiKey = loadApiKeyFromProjectFile(provider) ?? ""
   }
 
   return {

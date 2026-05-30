@@ -1,92 +1,128 @@
-# Deepicode 代码审查与建议
+# Deepicode Bug 跟踪与修复指南
 
-**最后更新**: 2026-06-05（B1/B2 已修复，新增 B5/B6）
-
-> 已修复项见 `DONE.md`。
+**最后更新**: 2026-06-05（P0-P3 批量修复完成）
 
 ---
 
-## 〇、测试发现的 Bug
+## 一、P0 — 必须立即修复（0 项，全部已修复 ✓）
 
-### 代码 Bug（未修复）
-
-#### B5. `repair.ts` 组合策略缺失（2026-06-05 测试发现）
-
-| 项 | 内容 |
-|---|------|
-| **位置** | `packages/core/src/context/repair.ts` — `scavenge()` 策略 1e + 1f |
-| **症状** | `{"key": "value` 同时有未闭合括号和未闭合引号，1e 补括号得到 `{"key": "value}`（无效 JSON），1f 补引号得到 `{"key": "value"`（仍缺括号），都不通过。真正的修复需要 1e+1f 组合补全为 `{"key": "value"}` |
-| **测试** | `repair.test.ts` — "should fix unclosed quote+brace" 仅测试了 `{"key": "value`（有空格在末尾），未覆盖 `{"key": "value`（无空格） |
-| **影响** | 低概率 — `{"key": "value` 格式的截断 rarely 出现 |
-| **修复** | 新增 1g 策略：先补引号再补括号，组合修复 |
-
-#### B6. `SessionLoader` 系统消息不过滤（2026-06-05 测试发现）
-
-| 项 | 内容 |
-|---|------|
-| **位置** | `packages/core/src/session.ts` — `SessionLoader.read()` |
-| **症状** | session 恢复时，之前存储的系统消息 + 当前引擎注入的系统消息叠加，造成双份 system prompt |
-| **测试** | `session.test.ts` — system messages preserved ✅ 确认了"存什么返回什么"的当前行为 |
-| **影响** | 中等 — 对话恢复后 system prompt 翻倍，可能影响模型行为 |
-| **修复** | `SessionLoader.read()` 返回前过滤 `role: "system"` 的消息，由 Engine 重新注入 |
-
-### 代码 Bug（已修复）
-
-| Bug | 位置 | 原因 | 修复 |
-|-----|------|------|------|
-| B1 | `hooks.ts:51-57` | `runAfterToolCall` 回调抛异常中断后续 hook | try-catch 包裹每个回调 |
-| B2 | `mcp-tools.ts` | McpAuth.set() stub 返回 `"stored"` 误导 | 改为 `"not_implemented"` |
-| MockSseServer 连接泄漏 | `mock-sse-server.ts` | `server.close()` 未销毁 keep-alive socket | 追踪 `Set<Socket>` + `stop()` 时 `sock.destroy()` |
-| CJK 双重计数 | `token-estimator.ts:14-18` | CJK 字符同时匹配 `CJK_RE` 和 `PUNCT_RE` | `PUNCT_RE` 排除 CJK 范围 |
-
-### 测试维护（非代码 Bug）
-
-| Bug | 说明 | 建议 |
-|-----|------|------|
-| B3 | sleep-clamp 测试预期值过时 | 更新断言值匹配当前 clamp 逻辑 |
-| B4 | bash-integration-concurrent 偶发竞态 | 每个测试使用独立临时目录 |
+所有 P0 项已于本轮修复，详见 §六。
 
 ---
 
-## 一、BUG_REPORT.md 评估
+## 二、P1 — 建议近期修复（0 项，全部已修复 ✓）
 
-基于 FindBugV2.md 112 条 bug 模式的审查，36 项发现质量较高。
+所有 P1 项已于本轮修复，详见 §六。
 
+---
 
-### 需要修复（优先排序）
+## 三、P2 — 下个迭代
 
-| 优先级 | 编号 | 问题 | 影响 |
-|--------|------|------|------|
-| 🟢 P3 | **H6** | shell-exec error 未设 done=true | 低概率 |
-| 🟢 P3 | **H7** | glob Windows 路径越界 | 非目标平台 |
-| 🟢 P3 | **H9** | Provider 切换未清理历史消息 | 低概率（仅 DeepSeek） |
-| 🟢 P3 | **H10** | session 恢复后 stats 清零显示 0% | 已知 tradeoff |
-| 🟢 P3 | **H11** | reasoning_content 持久化膨胀 | 已知 OBS-3 |
-| 🟢 P3 | **M4** | sensitive `.env.local` 等变体未覆盖 | 低概率 |
-| 🟢 P3 | **M5** | bash 路径正则只匹配 ASCII | 边缘场景 |
-| 🟢 P3 | **M6** | bash denylist 可被绕过 | 黑名单固有缺陷 |
-| 🟢 P3 | **M8** | MCP 超时 unhandled rejection | 有 try-catch 包裹 |
-| 🟢 P3 | **M10** | snapshot Date.now() 碰撞 | 低概率 |
-| 🟢 P3 | **M13** | permission 大小写敏感 | 边缘场景 |
-| 🟢 P3 | **L1-L10** | 各类低风险 | 影响微小 |
+| 编号 | 问题 | 位置 |
+|------|------|------|
+| L2 | SessionWriter 队列无界增长（加队列上限 10000 条） | `core/src/session.ts:114-142` |
+| L5 | fuzzy-edit/hash-edit 未归一化 CRLF | `tools/src/fuzzy-edit.ts`, `hash-edit.ts` |
+| L9 | reasoningText 消失导致布局跳动（UX 改进） | `tui/src/bridge.tsx:180-189` |
+| — | notebook-edit 同步文件操作 → 异步 + 原子写入 | `tools/src/notebook-edit.ts` |
+| — | /skill 跨包相对路径 import 改为 package alias | `tui/src/App.tsx:171` |
+| — | handleSessionSelect 卸载后 setState（加 isMountedRef） | `tui/src/App.tsx:217-230` |
 
---
+---
 
-## 二、未修复的已知限制
+## 四、P3 — 代码质量改进
 
-（同上轮，无变化）
+| 编号 | 问题 | 位置 |
+|------|------|------|
+| Q10 | tool_start key fallback 与其他事件不一致 | `tui/src/bridge.tsx:83,95,111` |
+| — | tool_call_id 规范化（跨 provider 场景，当前不需要） | `core/src/loop.ts` |
+| — | client.ts 3 处 `any`/`as` 类型断言 | `core/src/client.ts` |
+| — | notebook-edit 同步 I/O → 异步 | `tools/src/notebook-edit.ts` |
 
-## 三、未覆盖的风险
+---
 
-1. **SSE 流中断恢复**：`client.ts` 的 abort/retry 在 Bun 环境下的行为可能与 Node.js 不同
-2. **大文件 hash 计算**：`hash-edit.ts` 的 `createReadStream` 在 100MB+ 文件上可能阻塞主线程
-3. **Worker 生命周期**：`tokenizer-worker.js` 在 Bun 的 Worker 实现中可能有内存泄漏
-4. **AbortSignal 仅 3/11 工具传递**：Ctrl+C 对大文件读/写无效
-5. **错误格式不一致**：`[Error]` 前缀 vs `safeStringify({error:...})`
+## 五、已知限制（不修复，记录在案）
 
-## 四、搁置的架构改进
+| 编号 | 问题 | 理由 |
+|------|------|------|
+| K1 | Stale-read TOCTOU 窗口 | 毫秒级，atomic rename + exclusive 并发 |
+| K2 | Session JSONL 崩溃一致性 | best-effort 设计 |
+| K3 | Bash 命令黑名单可绕过 | 黑名单固有缺陷 |
+| K4 | Tool 结果 200 字符截断 | 完整输出在 session 文件中可查 |
+| K5 | Token 估算 ~20% 偏差 | 已知 tradeoff，待 tokenizer 接入后校准 |
+| K6 | 多进程并发编辑无冲突检测 | 单进程 Agent 设计范围外 |
+| K7 | Push notification / monitor / cron 仅 Linux | 目标平台 |
+| K8 | workflow / agent-tool 为模拟执行 | 占位实现，待后续完善 |
+| K9 | 跨 provider 会话迁移未清洗状态 | 当前仅 DeepSeek-compatible API |
+| K10 | 权限检查大小写敏感 | 工具名在 registry 中统一小写 |
+| K11 | 光标位置用 ref 不用 state | useInput 每次按键触发 re-render，读取 ref 正确 |
 
-- OBS-1: prefix.build() 重复调用
-- OBS-3: reasoning_content 入库策略
-- A1: 工具执行后无独立验证步骤
-- A2: Fold 操作成本未记录
+---
+
+## 六、已修复（本轮 P0-P3 批量修复，2026-06-05）
+
+### P0（6 项）
+
+| 编号 | 问题 | 文件 | 改动 |
+|------|------|------|------|
+| P0-1 | LSP 路径解析未使用 ctx.cwd + 无敏感文件检查 | `tools/src/lsp.ts` | `resolve(ctx.cwd, args.file_path)` + `isSensitive()` |
+| P0-2 | web-browser navigate/screenshot 无 SSRF 防护 | `tools/src/web-browser.ts` | `validateUrl()` + `hasPrivateIP()` + `isPrivateHostname()` + redirect 后重校验 + `isPrivateHostnameSync()` |
+| P0-3 | Token 计费公式双重计费 cache tokens | `core/src/pricing.ts` | `nonCachePrompt = promptTokens - cacheHitTokens - cacheMissTokens` |
+| P0-4 | Agent 配置 model/temperature/maxTokens 被忽略 | `core/src/engine.ts` | `ac.model ?? this.config.model` 等 fallback 链 |
+| P0-5 | Session 持久化丢失 tool results | `core/src/loop.ts` | `toolExecutor.run()` 后追加 `sessionWriter.enqueue(messages)` |
+| P0-6 | bridge.tsx 直接突变 React state | `tui/src/bridge.tsx` | `assistant_final` 改用不可变更新 `prev.messages.map(...)` |
+
+### P1（13 项）
+
+| 编号 | 问题 | 文件 | 改动 |
+|------|------|------|------|
+| S1 | Cron 换行符/命令注入 | `tools/src/cron.ts` | command + name 过滤 `[\n\r]` |
+| S2 | read_file 未检测二进制文件 | `tools/src/file-ops.ts` | `hasBinaryEncoding()` 检测，拒绝二进制文件 |
+| S3 | 工具缺少 isSensitive() | `tools/src/notebook-edit.ts`, `worktree.ts` | 添加敏感路径检查 |
+| S4 | write-file 缺少大小限制 | `tools/src/write-file.ts` | `MAX_FILE_SIZE = 10MB` |
+| R1 | shell-exec child.on("error") 未清理 timer | `tools/src/shell-exec.ts` | `clearTimeout(timer)` + `clearTimeout(sigtermTimer)` |
+| R2 | anySignal 事件监听器内存泄漏 | `tools/src/web-fetch.ts`, `web-search.ts`, `web-browser.ts` | anySignal 返回 `{ signal, cleanup }`，fetch 后 cleanup |
+| R3 | TokenizerPool shutdown pending Promise 悬空 | `core/src/context/tokenizer-pool.ts` | shutdown 时先 reject 全部 pending |
+| D2 | loadApiKeyFromProjectFile 仅 DEEPSEEK | `core/src/config.ts` | 根据 provider 动态查找 `{PROVIDER}_API_KEY` |
+| D3 | QueryEngine.query() tool call 返回空串 | `core/src/query-engine.ts` | tool call 场景返回标记字符串 |
+| D4 | safe-stringify 截断后非合法 JSON | `tools/src/safe-stringify.ts` | 截断时输出合法 JSON 结构 |
+| D5 | web-browser screenshot Date.now() 命名 | `tools/src/web-browser.ts` | `Date.now()` → `randomUUID()` |
+| T1 | Delete 键被当作 Backspace | `tui/src/DeepiPromptInput.tsx` | 拆分 Backspace/Delete 分支 |
+| T2 | SessionPicker 空列表 selIdx = -1 | `tui/src/SessionPicker.tsx` | 下行时检查 `sessions.length > 0` |
+
+### P2（6 项）
+
+| 编号 | 问题 | 文件 | 改动 |
+|------|------|------|------|
+| L1 | SSE 注释行（`:` 开头）未跳过 | `core/src/client.ts` | `if (trimmed.startsWith(":")) continue` |
+| L3 | worktree runGit 无 AbortSignal | `tools/src/worktree.ts` | `runGit()` 添加 `signal` 参数，3 处调用点传递 `ctx.signal` |
+| L4 | sensitive.ts 模式不完整 | `tools/src/sensitive.ts` | 补充 `.dockercfg`、`.netrc`、`.htpasswd`、`token.json` 等 6 个模式 |
+| L6 | bash 未设置非交互式环境变量 | `tools/src/shell-exec.ts` | `env: { GIT_EDITOR: "true", GIT_SEQUENCE_EDITOR: "true", EDITOR: "true" }` |
+| L7 | 500 错误未加入重试列表 | `core/src/client.ts` | `retryableStatuses` 加入 500 |
+| L8 | web-fetch.ts hasPrivateIP/isPrivateHostname 未导出 | `tools/src/web-fetch.ts` | 改为 `export function` |
+
+### P3（7 项）
+
+| 编号 | 问题 | 文件 | 改动 |
+|------|------|------|------|
+| Q1 | getFoldDecision 冗余条件分支 | `core/src/context/token-estimator.ts` | 合并 `<= 0.75` / `<= 0.80` 为 `<= 0.80` |
+| Q2 | AgentEvent 死代码 | `core/src/types.ts` | 删除未使用的 `AgentEvent` 接口 |
+| Q3 | loop.ts 字符串索引访问私有属性 | `core/src/loop.ts` + `manager.ts` | `ctx['contextWindow']` → `ctx.getContextWindow()` |
+| Q5 | CoreEngine 接口与实现签名不匹配 | `core/src/interface.ts` | `getState()` 接口增加可选参数 |
+| Q6 | registry 未检查同名工具重复注册 | `tools/src/registry.ts` | `register()` 检查重复并抛异常 |
+| Q8 | ModelPicker Ctrl+V 仅小写 v | `tui/src/ModelPicker.tsx` | `_input === 'v' \|\| _input === 'V'` |
+
+---
+
+## 七、测试发现的 Bug
+
+| 编号 | 问题 | 状态 |
+|------|------|------|
+| B5 | repair.ts 1e+1f 组合策略缺失 | 未修复（低概率） |
+| B6 | SessionLoader 恢复时系统消息重复 | 未修复（中等影响） |
+| B1-B4 | afterToolCall / McpAuth / sleep / bash 竞态 | 已修复 |
+
+---
+
+## 八、此前累计修复（记录于 DONE.md，共 37+ 项）
+
+详见 DONE.md §五 已修复列表。

@@ -9,12 +9,12 @@ const MAX_OUTPUT_LENGTH = 100_000
 
 const BLOCKED_NETS = ["0.", "10.", "100.", "127.", "169.254.", "172.16.", "172.17.", "172.18.", "172.19.", "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.", "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.", "192.0.0.", "192.0.2.", "192.168.", "198.18.", "198.19.", "198.51.100.", "203.0.113.", "224.", "240.", "fc", "fd", "fe80", "::1", "::"]
 
-function hasPrivateIP(host: string): boolean {
+export function hasPrivateIP(host: string): boolean {
   if (isIP(host)) return BLOCKED_NETS.some(p => host.startsWith(p))
   return false
 }
 
-async function isPrivateHostname(host: string): Promise<boolean> {
+export async function isPrivateHostname(host: string): Promise<boolean> {
   try {
     const addrs = await dns.resolve(host)
     return addrs.some(a => BLOCKED_NETS.some(p => a.startsWith(p)))
@@ -45,6 +45,9 @@ export function createWebFetchTool(): AgentTool {
       let url = args.url
       try {
         const parsed = new URL(url)
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          return { content: safeStringify({ error: `Unsupported protocol: ${parsed.protocol}` }), isError: true }
+        }
         if (parsed.protocol === "http:") {
           parsed.protocol = "https:"
           url = parsed.toString()
@@ -67,15 +70,16 @@ export function createWebFetchTool(): AgentTool {
       try {
         const controller = new AbortController()
         const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT)
-        const signal = ctx.signal ? anySignal(ctx.signal, controller.signal) : controller.signal
+        const { signal, cleanup } = ctx.signal ? anySignal(ctx.signal, controller.signal) : { signal: controller.signal, cleanup: () => {} }
 
         const t0 = Date.now()
-        // redirect: "follow" is used with post-fetch SSRF re-check on resp.redirected.
-        // The internal server receives the request (suboptimal), but content is blocked
-        // if it resolves to private IP. A full manual-redirect loop would avoid the
-        // request entirely but adds complexity (redirect chain depth, cookie carry).
-        const resp = await fetch(url, { signal, redirect: "follow" })
-        clearTimeout(timer)
+        let resp: Response
+        try {
+          resp = await fetch(url, { signal, redirect: "follow" })
+        } finally {
+          clearTimeout(timer)
+          cleanup()
+        }
 
         // SSRF: validate final URL after any redirects
         const finalUrl = resp.redirected ? new URL(resp.url) : new URL(url)
@@ -134,13 +138,16 @@ export function createWebFetchTool(): AgentTool {
   }
 }
 
-function anySignal(...signals: AbortSignal[]): AbortSignal {
+function anySignal(...signals: AbortSignal[]): { signal: AbortSignal; cleanup: () => void } {
   const controller = new AbortController()
+  const handlers: Array<() => void> = []
   for (const s of signals) {
-    if (s.aborted) { controller.abort(s.reason); return controller.signal }
-    s.addEventListener("abort", () => controller.abort(s.reason), { once: true })
+    if (s.aborted) { controller.abort(s.reason); return { signal: controller.signal, cleanup: () => {} } }
+    const handler = () => controller.abort(s.reason)
+    s.addEventListener("abort", handler, { once: true })
+    handlers.push(() => s.removeEventListener("abort", handler))
   }
-  return controller.signal
+  return { signal: controller.signal, cleanup: () => handlers.forEach(h => h()) }
 }
 
 function htmlToText(html: string): string {

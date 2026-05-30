@@ -4,7 +4,7 @@ import { createTaskUpdateTool } from "../src/task-update.js"
 import { createTaskListTool } from "../src/task-list.js"
 import { createTaskGetTool } from "../src/task-get.js"
 import { createTaskStopTool } from "../src/task-stop.js"
-import { rmSync, existsSync, mkdirSync } from "node:fs"
+import { rmSync, existsSync, mkdirSync, mkdtempSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
@@ -167,5 +167,37 @@ describe("TaskStop", () => {
     const tool = createTaskStopTool()
     const r = await tool.execute({ id: "nope" }, ctx(tmpDir))
     expect(r.isError).toBe(true)
+  })
+})
+
+describe("M16: Task full flow via tools", () => {
+  let tmpDir: string
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "deepicode-task-full-"))
+    mkdirSync(join(tmpDir, ".deepicode"), { recursive: true })
+  })
+  afterEach(() => {
+    try { rmSync(tmpDir, { recursive: true, force: true }) } catch {}
+  })
+
+  it("should support full flow: create → list → get → update → stop", async () => {
+    const { TaskManager } = await import("../src/task-manager.js")
+    const mgr = new TaskManager(tmpDir)
+
+    const t1 = mgr.create({ content: "full flow task", status: "pending", priority: "high" })
+    expect(t1.id).toBeTruthy()
+
+    const all = mgr.list()
+    expect(all).toHaveLength(1)
+
+    const got = mgr.get(t1.id)
+    expect(got).toBeDefined()
+    expect(got!.content).toBe("full flow task")
+
+    mgr.update(t1.id, { status: "in_progress" })
+    expect(mgr.get(t1.id)!.status).toBe("in_progress")
+
+    mgr.stop(t1.id)
+    expect(mgr.get(t1.id)!.status).toBe("cancelled")
   })
 })

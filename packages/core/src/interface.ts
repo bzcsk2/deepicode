@@ -86,7 +86,7 @@ export interface SessionStats {
 
 export interface CoreEngine {
   submit(userInput: string, agentConfig?: AgentConfig): AsyncGenerator<LoopEvent>
-  getState(): AgentState
+  getState(isStreaming?: boolean, streamingMessage?: string, pendingToolCalls?: Array<{ name: string; args: string }>): AgentState
   interrupt(): void
   registerTool(tool: AgentTool): void
   switchAgent(agentName: string): string

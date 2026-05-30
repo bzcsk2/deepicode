@@ -42,7 +42,11 @@ export class StreamingToolExecutor {
       completed.sort((a, b) => a.index - b.index)
 
       for (const { index, event, result } of completed) {
-        const originalTc = batch.find((b) => b.index === index)!.tc
+        const originalTc = batch.find((b) => b.index === index)?.tc
+        if (!originalTc) {
+          yield { role: "error", content: `Tool call index ${index} not found in batch`, severity: "error", toolName: event.toolName, toolCallIndex: index }
+          continue
+        }
         appendToolResult(originalTc, result)
         yield event
         yield { role: "tool_progress", toolName: event.toolName, toolCallIndex: index, content: "done" }

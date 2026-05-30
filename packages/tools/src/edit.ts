@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises"
+import { readFile, writeFile, stat } from "node:fs/promises"
 import { resolve } from "node:path"
 import type { AgentTool } from "../../core/src/interface.js"
 import { hashAnchoredReplaceOnce } from "./hash-edit.js"
@@ -6,6 +6,8 @@ import { fuzzyReplaceOnce } from "./fuzzy-edit.js"
 import { checkStale } from "./stale-read.js"
 import { isSensitive } from "./sensitive.js"
 import { safeStringify } from "./safe-stringify.js"
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 
 export function createEditTool(): AgentTool {
   return {
@@ -41,6 +43,19 @@ export function createEditTool(): AgentTool {
 
       if (isSensitive(path)) {
         return { content: safeStringify({ error: `Editing sensitive file is denied: ${args.path}` }), isError: true }
+      }
+
+      let fileStat
+      try {
+        fileStat = await stat(path)
+      } catch {
+        return { content: safeStringify({ error: `File not found: ${args.path}` }), isError: true }
+      }
+      if (!fileStat.isFile()) {
+        return { content: safeStringify({ error: `Not a file: ${args.path}` }), isError: true }
+      }
+      if (fileStat.size > MAX_FILE_SIZE) {
+        return { content: safeStringify({ error: `File too large (${fileStat.size} bytes). Max allowed: ${MAX_FILE_SIZE} bytes.` }), isError: true }
       }
 
       const staleCheck = await checkStale(path)

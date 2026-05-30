@@ -2,8 +2,11 @@ import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { readFileSync, unlinkSync } from "node:fs"
+import { randomUUID } from "node:crypto"
+import { isIP } from "node:net"
 import type { AgentTool } from "../../core/src/interface.js"
 import { safeStringify } from "./safe-stringify.js"
+import { hasPrivateIP, isPrivateHostname } from "./web-fetch.js"
 
 export function createWebBrowserTool(): AgentTool {
   return {
@@ -38,12 +41,51 @@ export function createWebBrowserTool(): AgentTool {
         const url = args.url as string | undefined
         if (!url) return { content: safeStringify({ error: "url is required for navigate action" }), isError: true }
 
+        const urlErr = validateUrl(url)
+        if (urlErr) return { content: safeStringify({ error: urlErr }), isError: true }
+        const hostname = new URL(url).hostname
+        if (hasPrivateIP(hostname)) {
+          return { content: safeStringify({ error: `URL resolves to private network: ${url}` }), isError: true }
+        }
+        if (!isIP(hostname)) {
+          try {
+            if (await isPrivateHostname(hostname)) {
+              return { content: safeStringify({ error: `URL resolves to private network: ${url}` }), isError: true }
+            }
+          } catch { return { content: safeStringify({ error: `Cannot resolve hostname: ${url}` }), isError: true } }
+        }
+
         try {
           const controller = new AbortController()
           const timer = setTimeout(() => controller.abort(), timeoutMs)
-          const signal = ctx.signal ? anySignal(ctx.signal, controller.signal) : controller.signal
-          const resp = await fetch(url, { signal })
-          clearTimeout(timer)
+          const { signal, cleanup } = ctx.signal ? anySignal(ctx.signal, controller.signal) : { signal: controller.signal, cleanup: () => {} }
+
+          let resp: Response
+          try {
+            resp = await fetch(url, { signal, redirect: "follow" })
+          } finally {
+            clearTimeout(timer)
+            cleanup()
+          }
+
+          const finalUrl = resp.url || url
+          if (validateUrl(finalUrl)) {
+            return { content: safeStringify({ error: `Redirected to forbidden URL: ${finalUrl}` }), isError: true }
+          }
+          // Re-check SSRF on final URL after redirect
+          const finalHostname = new URL(finalUrl).hostname
+          if (finalHostname !== hostname) {
+            if (hasPrivateIP(finalHostname)) {
+              return { content: safeStringify({ error: `Redirected to private network: ${finalUrl}` }), isError: true }
+            }
+            if (!isIP(finalHostname)) {
+              try {
+                if (await isPrivateHostname(finalHostname)) {
+                  return { content: safeStringify({ error: `Redirected to private network: ${finalUrl}` }), isError: true }
+                }
+              } catch { return { content: safeStringify({ error: `Cannot resolve redirected hostname: ${finalUrl}` }), isError: true } }
+            }
+          }
 
           if (!resp.ok) {
             return { content: safeStringify({ error: `HTTP ${resp.status}: ${resp.statusText}`, code: resp.status }), isError: true }
@@ -67,7 +109,14 @@ export function createWebBrowserTool(): AgentTool {
         const url = args.url as string | undefined
         if (!url) return { content: safeStringify({ error: "url is required for screenshot action" }), isError: true }
 
-        const tmpFile = join(tmpdir(), `deepicode-shot-${Date.now()}.png`)
+        const urlErr = validateUrl(url)
+        if (urlErr) return { content: safeStringify({ error: urlErr }), isError: true }
+        const hostname = new URL(url).hostname
+        if (hasPrivateIP(hostname) || isPrivateHostnameSync(hostname)) {
+          return { content: safeStringify({ error: `URL resolves to private network: ${url}` }), isError: true }
+        }
+
+        const tmpFile = join(tmpdir(), `deepicode-shot-${randomUUID()}.png`)
         const result = spawnSync("npx", ["playwright", "screenshot", url, "--output", tmpFile], { timeout: timeoutMs })
 
         if (result.error || result.status !== 0) {
@@ -98,13 +147,33 @@ export function createWebBrowserTool(): AgentTool {
   }
 }
 
-function anySignal(...signals: AbortSignal[]): AbortSignal {
+function validateUrl(raw: string): string | null {
+  let url: URL
+  try { url = new URL(raw) } catch { return "Invalid URL" }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return "Only http/https URLs are allowed"
+  if (url.username || url.password) return "URLs with credentials are not allowed"
+  return null
+}
+
+const PRIVATE_HOSTNAMES = new Set([
+  "localhost", "localhost.localdomain", "localhost6", "ip6-localhost",
+  "metadata.google.internal", "169.254.169.254",
+])
+
+function isPrivateHostnameSync(hostname: string): boolean {
+  return PRIVATE_HOSTNAMES.has(hostname) || hostname.endsWith(".local") || hostname.endsWith(".internal")
+}
+
+function anySignal(...signals: AbortSignal[]): { signal: AbortSignal; cleanup: () => void } {
   const controller = new AbortController()
+  const handlers: Array<() => void> = []
   for (const s of signals) {
-    if (s.aborted) { controller.abort(s.reason); return controller.signal }
-    s.addEventListener("abort", () => controller.abort(s.reason), { once: true })
+    if (s.aborted) { controller.abort(s.reason); return { signal: controller.signal, cleanup: () => {} } }
+    const handler = () => controller.abort(s.reason)
+    s.addEventListener("abort", handler, { once: true })
+    handlers.push(() => s.removeEventListener("abort", handler))
   }
-  return controller.signal
+  return { signal: controller.signal, cleanup: () => handlers.forEach(h => h()) }
 }
 
 function htmlToText(html: string): string {

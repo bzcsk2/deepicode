@@ -20,9 +20,11 @@ export const USD_TO_CNY = 7.25
 export function calculateCost(model: string, promptTokens: number, completionTokens: number, cacheHitTokens = 0, cacheMissTokens = 0): number {
   const pricing = MODEL_PRICING[model]
   if (!pricing) return 0
-  const inputTokens = cacheHitTokens + cacheMissTokens
+  // DeepSeek API prompt_tokens includes cache_hit_tokens + cache_miss_tokens.
+  // Subtract them to avoid double-counting, then add back at their specific rates.
+  const nonCachePrompt = Math.max(0, promptTokens - cacheHitTokens - cacheMissTokens)
   const cost =
-    (promptTokens / 1000) * pricing.inputPer1K +
+    (nonCachePrompt / 1000) * pricing.inputPer1K +
     (completionTokens / 1000) * pricing.outputPer1K +
     (cacheHitTokens / 1000) * pricing.cacheReadPer1K +
     (cacheMissTokens / 1000) * pricing.cacheWritePer1K

@@ -35,10 +35,12 @@ describe("TT3: Cost calculation", () => {
     expect(cost).toBeCloseTo(expected, 6)
   })
 
-  it("should include cache costs when provided", () => {
-    const withCache = calculateCost("deepseek-v4-flash", 1000, 500, 300, 700)
+  it("should include cache costs without double-counting", () => {
+    // promptTokens includes cache tokens; formula subtracts them before applying inputPer1K
+    const withCache = calculateCost("deepseek-v4-flash", 1000, 500, 300, 200)
     const p = MODEL_PRICING["deepseek-v4-flash"]
-    const expected = (1000 / 1000) * p.inputPer1K + (500 / 1000) * p.outputPer1K + (300 / 1000) * p.cacheReadPer1K + (700 / 1000) * p.cacheWritePer1K
+    // non-cache: 1000-300-200 = 500; plus cache hit 300 at read rate, cache miss 200 at write rate
+    const expected = (500 / 1000) * p.inputPer1K + (500 / 1000) * p.outputPer1K + (300 / 1000) * p.cacheReadPer1K + (200 / 1000) * p.cacheWritePer1K
     expect(withCache).toBeCloseTo(expected, 6)
   })
 

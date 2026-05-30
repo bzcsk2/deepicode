@@ -3,7 +3,7 @@ import { resolve } from "node:path"
 import type { AgentTool } from "../../core/src/interface.js"
 import { recordRead } from "./stale-read.js"
 import { isSensitive } from "./sensitive.js"
-import { safeStringify } from "./safe-stringify.js"
+import { safeStringify, hasBinaryEncoding } from "./safe-stringify.js"
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 
@@ -50,6 +50,9 @@ export function createReadFileTool(): AgentTool {
 
       const maxChars = typeof args.max_chars === "number" ? Math.max(0, args.max_chars) : 200_000
       const raw = await readFile(path, "utf-8")
+      if (hasBinaryEncoding(raw)) {
+        return { content: safeStringify({ error: `File appears to be binary: ${args.path}` }), isError: true }
+      }
       let out = raw
 
       const start = typeof args.start_line === "number" ? Math.max(0, Math.floor(args.start_line)) : undefined

@@ -1,11 +1,23 @@
 import { createHash, randomUUID } from "node:crypto"
 import { createReadStream, createWriteStream } from "node:fs"
-import { stat, rename, unlink, chmod, mkdir } from "node:fs/promises"
+import { stat, rename, unlink, chmod, mkdir, readFile } from "node:fs/promises"
 import { dirname } from "node:path"
 
 export interface HashEditResult {
   replacedCount: number
   method: "hash_anchored"
+}
+
+const REPLACEMENT_CHAR = "\uFFFD"
+const BINARY_THRESHOLD = 0.05
+
+function hasBinaryContent(text: string): boolean {
+  if (!text) return false
+  let count = 0
+  for (const ch of text) {
+    if (ch === REPLACEMENT_CHAR) count++
+  }
+  return count / text.length > BINARY_THRESHOLD
 }
 
 // Stream-based edit: find exact old_string and replace once.
@@ -23,6 +35,18 @@ export async function hashAnchoredReplaceOnce(
   // Integrity check: if caller provided a hash, verify oldString content matches
   if (oldHash !== undefined && sha256(oldString) !== oldHash) {
     return null
+  }
+
+  // Quick binary check: read first 8KB to detect non-UTF-8 content
+  try {
+    const head = await readFile(filePath)
+    const sample = new TextDecoder("utf-8", { fatal: false }).decode(head.slice(0, 8192))
+    if (hasBinaryContent(sample)) {
+      throw new Error("Binary file detected: editing non-UTF-8 files is not supported")
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("Binary file detected")) throw e
+    // If file doesn't exist, let read stream fail later
   }
 
   // Get original file permissions so we don't lose executable bits when replacing

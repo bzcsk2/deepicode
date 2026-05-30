@@ -114,7 +114,7 @@ export class AsyncSessionWriter {
   enqueue(record: SessionRecord): void {
     try {
       this.queue.push(JSON.stringify(record) + "\n")
-      void this.flushSoon()
+      this.flushSoon().catch(() => {})
     } catch {
       // best-effort: drop unserializable records silently
     }
@@ -136,7 +136,7 @@ export class AsyncSessionWriter {
     } finally {
       this.flushing = false
       if (this.queue.length > 0) {
-        void this.flushSoon()
+        this.flushSoon().catch(() => {})
       }
     }
   }

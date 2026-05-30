@@ -213,9 +213,9 @@ export class ReasonixEngine implements CoreEngine {
         config: {
           apiKey: this.config.apiKey,
           baseUrl: this.config.baseUrl,
-          model: this.config.model,
-          maxTokens: this.config.maxTokens,
-          temperature: this.config.temperature,
+          model: ac.model ?? this.config.model,
+          maxTokens: ac.maxTokens ?? this.config.maxTokens,
+          temperature: ac.temperature ?? this.config.temperature,
         },
         signal: abortController.signal,
         sessionWriter: this.sessionWriter,

@@ -26,15 +26,19 @@ export function createWebSearchTool(): AgentTool {
       try {
         const controller = new AbortController()
         const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT)
-        const signal = ctx.signal ? anySignal(ctx.signal, controller.signal) : controller.signal
+        const { signal, cleanup } = ctx.signal ? anySignal(ctx.signal, controller.signal) : { signal: controller.signal, cleanup: () => {} }
         const t0 = Date.now()
 
-        const params = new URLSearchParams({ q: args.query, num: String(numResults) })
-        const resp = await fetch(`https://www.google.com/search?${params}`, {
-          signal,
-          headers: { "User-Agent": "Mozilla/5.0 (compatible; Deepicode/1.0)" },
-        })
-        clearTimeout(timer)
+        let resp: Response
+        try {
+          resp = await fetch(`https://www.google.com/search?${new URLSearchParams({ q: args.query, num: String(numResults) })}`, {
+            signal,
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; Deepicode/1.0)" },
+          })
+        } finally {
+          clearTimeout(timer)
+          cleanup()
+        }
 
         if (!resp.ok) {
           return { content: safeStringify({ error: `Search failed: HTTP ${resp.status}` }), isError: true }
@@ -58,13 +62,16 @@ export function createWebSearchTool(): AgentTool {
   }
 }
 
-function anySignal(...signals: AbortSignal[]): AbortSignal {
+function anySignal(...signals: AbortSignal[]): { signal: AbortSignal; cleanup: () => void } {
   const controller = new AbortController()
+  const handlers: Array<() => void> = []
   for (const s of signals) {
-    if (s.aborted) { controller.abort(s.reason); return controller.signal }
-    s.addEventListener("abort", () => controller.abort(s.reason), { once: true })
+    if (s.aborted) { controller.abort(s.reason); return { signal: controller.signal, cleanup: () => {} } }
+    const handler = () => controller.abort(s.reason)
+    s.addEventListener("abort", handler, { once: true })
+    handlers.push(() => s.removeEventListener("abort", handler))
   }
-  return controller.signal
+  return { signal: controller.signal, cleanup: () => handlers.forEach(h => h()) }
 }
 
 function parseGoogleResults(html: string): Array<{ title: string; url: string; snippet: string }> {

@@ -44,12 +44,3 @@ export interface Usage {
   prompt_cache_hit_tokens?: number // 缓存命中 token 数（DeepSeek prefix-cache）
   prompt_cache_miss_tokens?: number// 缓存未命中 token 数
 }
-
-// AgentEvent：chat 方法产出的流式事件，驱动 UI 渲染
-export interface AgentEvent {
-  type: "text" | "reasoning" | "tool_call_start" | "tool_call_end" | "usage" | "error"
-  content?: string    // 文本/推理内容
-  toolCall?: ToolCall // 工具调用信息
-  usage?: Usage       // token 用量
-  error?: string      // 错误信息
-}

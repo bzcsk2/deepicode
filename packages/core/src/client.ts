@@ -105,7 +105,7 @@ export class DeepSeekClient implements ChatClient {
     if (opts.reasoningEffort) body.reasoning_effort = opts.reasoningEffort
 
     const maxRetries = 3
-    const retryableStatuses = new Set([429, 502, 503])
+    const retryableStatuses = new Set([429, 500, 502, 503])
 
     let resp: Response
     let attempt = 0
@@ -163,6 +163,7 @@ export class DeepSeekClient implements ChatClient {
           let dataPayloads: string[] = []
           for (const line of raw.split("\n")) {
             const trimmed = line.trimEnd()
+            if (trimmed.startsWith(":")) continue // SSE comment line
             if (!trimmed.startsWith("data:")) continue
             dataPayloads.push(trimmed.slice("data:".length).trimStart())
           }

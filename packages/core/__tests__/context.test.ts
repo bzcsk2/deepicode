@@ -1,9 +1,20 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
+import { estimateTokens } from "../src/context/token-estimator.js"
 import { ImmutablePrefix } from "../src/context/immutable.js"
 import { AppendOnlyLog } from "../src/context/append-log.js"
 import { VolatileScratch } from "../src/context/scratch.js"
 import { ContextManager } from "../src/context/manager.js"
 import type { ChatMessage, ToolSpec } from "../src/types.js"
+
+// Mock TokenizerPool to use deterministic fallback — avoids worker startup race
+vi.mock("../src/context/tokenizer-pool.js", () => ({
+  TokenizerPool: class {
+    estimate(messages: any[]) {
+      return Promise.resolve(estimateTokens(messages))
+    }
+    shutdown() {}
+  },
+}))
 
 // === ImmutablePrefix 单元测试 ===
 describe("ImmutablePrefix", () => {
@@ -423,5 +434,35 @@ describe("ContextManager - 截断边界", () => {
     // No orphaned tool or bare assistant(tc) at start of log
     expect(msgs[1].role).toBe("user")
     expect(msgs[1].content).toBe("q2")
+  })
+})
+
+// M1-M3: fold decision tests via ContextManager
+describe("ContextManager - fold decision", () => {
+  it("M1: should yield force fold decision at >80% usage", async () => {
+    const cm = new ContextManager(20, 300)
+    cm.prefix.build("x".repeat(100))
+    cm.log.append({ role: "user", content: "x".repeat(800) })
+    const decision = await cm.getFoldDecision()
+    expect(decision.action).toBe("force")
+    expect(decision.ratio).toBeGreaterThan(0.80)
+  })
+
+  it("M2: should suggest fold at 65-80% usage", async () => {
+    const cm = new ContextManager(20, 350)
+    cm.prefix.build("x".repeat(200))
+    cm.log.append({ role: "user", content: "x".repeat(800) })
+    const decision = await cm.getFoldDecision()
+    expect(decision.action).toBe("suggest")
+    expect(decision.ratio).toBeGreaterThan(0.65)
+    expect(decision.ratio).toBeLessThanOrEqual(0.80)
+  })
+
+  it("M3: should return none when usage is low", async () => {
+    const cm = new ContextManager(20, 100_000)
+    cm.prefix.build("short prefix")
+    const decision = await cm.getFoldDecision()
+    expect(decision.action).toBe("none")
+    expect(decision.ratio).toBeLessThanOrEqual(0.65)
   })
 })

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import { resolve } from "node:path"
 import type { AgentTool } from "../../core/src/interface.js"
 import { safeStringify } from "./safe-stringify.js"
+import { isSensitive } from "./sensitive.js"
 
 export function createWorktreeTool(): AgentTool {
   return {
@@ -28,7 +29,7 @@ export function createWorktreeTool(): AgentTool {
         return { content: safeStringify({ error: "action must be 'enter' or 'exit'" }), isError: true }
       }
 
-      const gitCheck = await runGit(["rev-parse", "--git-dir"], ctx.cwd, 5000)
+      const gitCheck = await runGit(["rev-parse", "--git-dir"], ctx.cwd, 5000, ctx.signal)
       if (gitCheck.exitCode !== 0) {
         return { content: safeStringify({ error: "Not a git repository or git not available" }), isError: true }
       }
@@ -39,8 +40,11 @@ export function createWorktreeTool(): AgentTool {
           return { content: safeStringify({ error: "branch is required for enter action" }), isError: true }
         }
         const worktreePath = typeof args.path === "string" ? resolve(ctx.cwd, args.path) : resolve(ctx.cwd, "..", `${branch}-worktree`)
+        if (isSensitive(worktreePath)) {
+          return { content: safeStringify({ error: `Cannot create worktree at sensitive path: ${worktreePath}` }), isError: true }
+        }
 
-        const result = await runGit(["worktree", "add", worktreePath, branch], ctx.cwd, 30000)
+        const result = await runGit(["worktree", "add", worktreePath, branch], ctx.cwd, 30000, ctx.signal)
         if (result.exitCode !== 0) {
           return { content: safeStringify({ error: `Failed to create worktree: ${result.stderr}` }), isError: true }
         }
@@ -53,7 +57,7 @@ export function createWorktreeTool(): AgentTool {
         return { content: safeStringify({ error: "path is required for exit action" }), isError: true }
       }
 
-      const result = await runGit(["worktree", "remove", worktreePath], ctx.cwd, 30000)
+      const result = await runGit(["worktree", "remove", worktreePath], ctx.cwd, 30000, ctx.signal)
       if (result.exitCode !== 0) {
         return { content: safeStringify({ error: `Failed to remove worktree: ${result.stderr}` }), isError: true }
       }
@@ -63,35 +67,33 @@ export function createWorktreeTool(): AgentTool {
   }
 }
 
-function runGit(args: string[], cwd: string, timeoutMs: number): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+function runGit(args: string[], cwd: string, timeoutMs: number, signal?: AbortSignal): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     const child = spawn("git", args, { cwd })
     let stdout = ""
     let stderr = ""
     let done = false
 
+    const finish = (exitCode: number) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      resolve({ exitCode, stdout: stdout.trim(), stderr: stderr.trim() })
+    }
+
     const timer = setTimeout(() => {
-      if (!done) {
-        child.kill("SIGKILL")
-        resolve({ exitCode: 124, stdout, stderr })
-      }
+      child.kill("SIGKILL")
+      finish(124)
     }, timeoutMs)
+
+    if (signal) {
+      if (signal.aborted) { child.kill("SIGKILL"); finish(130); return }
+      signal.addEventListener("abort", () => { child.kill("SIGKILL"); finish(130) }, { once: true })
+    }
 
     child.stdout.on("data", (b) => { stdout += String(b) })
     child.stderr.on("data", (b) => { stderr += String(b) })
-    child.on("close", (code) => {
-      if (!done) {
-        done = true
-        clearTimeout(timer)
-        resolve({ exitCode: code ?? 0, stdout: stdout.trim(), stderr: stderr.trim() })
-      }
-    })
-    child.on("error", () => {
-      if (!done) {
-        done = true
-        clearTimeout(timer)
-        resolve({ exitCode: 1, stdout: stdout.trim(), stderr: stderr.trim() })
-      }
-    })
+    child.on("close", (code) => { finish(code ?? 0) })
+    child.on("error", () => { finish(1) })
   })
 }

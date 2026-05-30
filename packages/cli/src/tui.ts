@@ -33,10 +33,10 @@ async function main(): Promise<void> {
   const sessionId = sessionIdx >= 0 ? process.argv[sessionIdx + 1] : undefined
   const config = loadConfig()
 
-  // Initialize MCP host
+  // Initialize MCP host in background — don't block startup
   const mcpHost = new McpHost()
-  try { await mcpHost.loadConfig() } catch { /* no mcp.json */ }
   setMcpHost(mcpHost)
+  mcpHost.loadConfig().catch(() => { /* no mcp.json or connection failure */ })
 
   const engine = sessionId
     ? await ReasonixEngine.recover(config, sessionId)

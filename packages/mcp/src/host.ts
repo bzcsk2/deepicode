@@ -40,9 +40,10 @@ export class McpHost {
       } catch { continue }
     }
 
-    for (const [name, serverConfig] of Object.entries(config.mcpServers ?? {})) {
-      await this.connect(name, serverConfig)
-    }
+    const entries = Object.entries(config.mcpServers ?? {})
+    await Promise.all(entries.map(([name, serverConfig]) =>
+      this.connect(name, serverConfig).catch(() => { /* individual failure doesn't block others */ })
+    ))
   }
 
   async connect(name: string, config: McpServerConfig): Promise<void> {

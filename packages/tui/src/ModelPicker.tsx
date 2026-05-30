@@ -121,7 +121,7 @@ export function ModelPicker({ currentProvider, currentModel, onSelect, onCancel 
         setInputBuf(prev => prev.slice(0, -1));
         return;
       }
-      if (key.ctrl && _input === 'v') {
+      if (key.ctrl && (_input === 'v' || _input === 'V')) {
         void tryReadClipboard().then(clip => {
           if (clip) setInputBuf(prev => prev + clip);
         });

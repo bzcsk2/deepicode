@@ -36,24 +36,24 @@
 
 ## 🟡 中等（需要异步控制或 mock 技巧）
 
-| # | 模块 | 项 | 测试文件 |
-|---|------|----|---------|
-| M1 | 1.1 Context | fold force → yield status 警告事件 | `context.test.ts` |
-| M2 | 1.1 Context | fold suggest + ratio>75% → yield 推荐事件 | `context.test.ts` |
-| M3 | 1.1 Context | fold 100ms 超时降级不阻塞 loop | `context.test.ts` |
-| M4 | 1.5 Session | SessionLoader 系统消息被过滤 | `session.test.ts` |
-| M5 | 1.5 Session | loadSession — 清空+加载+继续 | `session.test.ts` |
-| M6 | 1.5 Session | recover — 静态工厂返回可用 engine | `session.test.ts` |
+| # | 模块 | 项 | 结果 |
+|---|------|----|------|
+| M1 | 1.1 Context | fold force → yield status 警告事件 | ✅ |
+| M2 | 1.1 Context | fold suggest + ratio>75% → yield 推荐事件 | ✅ |
+| M3 | 1.1 Context | fold 100ms 超时降级不阻塞 loop | ✅ |
+| M4 | 1.5 Session | SessionLoader 系统消息被过滤 | ✅ |
+| M5 | 1.5 Session | loadSession — 清空+加载+继续 | ✅ |
+| M6 | 1.5 Session | recover — 静态工厂返回可用 engine | ✅ |
 | M7 | 1.6 SSE Client | 超长单行 >100K chars 不 OOM | ✅ |
 | M8 | 1.6 SSE Client | 并发 chatCompletionsStream 不干扰 | ✅ |
-| M9 | 1.7 Engine+Loop | SessionWriter enqueue 每轮写入 | `engine.test.ts` |
-| M10 | 2.2 write_file | 权限继承 — 父目录 mode 继承 | `write-file.test.ts` |
+| M9 | 1.7 Engine+Loop | SessionWriter enqueue 每轮写入 | ✅ |
+| M10 | 2.2 write_file | 权限继承 — 父目录 mode 继承 | ⏳ `write-file.test.ts` |
 | M11 | 2.3 edit | 并发 edit — 不同文件可并行 | ✅ |
-| M12 | 2.7 WebFetch | 正常 HTTPS + HTTP 升级 + redirect + HTML 提取 + 超大 + 截断 | `web-fetch.test.ts` |
-| M13 | 2.8 WebSearch | 全套 6 项（搜索/空/限制/无结果/结构变更/超时） | `web-search.test.ts` |
+| M12 | 2.7 WebFetch | 正常 HTTPS + HTTP 升级 + redirect + HTML 提取 + 超大 + 截断 | ✅ |
+| M13 | 2.8 WebSearch | 全套 6 项（搜索/空/限制/无结果/结构变更/超时） | ✅ |
 | M14 | 5.2 HookManager | afterToolCall 异常不中断主流程 | ✅ |
 | M15 | 5.3 FileSnapshot | SHA256 路径索引 | ✅ |
-| M16 | 7.1 多轮工具链 | Task 完整流程 — Create→List→Get→Update→Stop | `task-manager.test.ts` |
+| M16 | 7.1 多轮工具链 | Task 完整流程 — Create→List→Get→Update→Stop | ✅ |
 | M17 | 7.2 错误恢复 | 连续 stream 失败 → 重试，第三次终止 | ✅（已有测试覆盖） |
 | M18 | 7.2 错误恢复 | repair 失败 → 不触发 API 重试 | ✅（已有测试覆盖） |
 

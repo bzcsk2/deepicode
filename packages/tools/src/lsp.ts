@@ -2,6 +2,7 @@ import type { AgentTool } from "../../core/src/interface.js"
 import { safeStringify } from "./safe-stringify.js"
 import { existsSync } from "node:fs"
 import { resolve } from "node:path"
+import { isSensitive } from "./sensitive.js"
 
 export function createLspTool(): AgentTool {
   return {
@@ -24,11 +25,14 @@ export function createLspTool(): AgentTool {
     },
     concurrency: "exclusive",
     approval: "read",
-    async execute(args) {
+    async execute(args, ctx) {
       if (typeof args.action !== "string" || typeof args.file_path !== "string") {
         return { content: safeStringify({ error: "action and file_path are required" }), isError: true }
       }
-      const filePath = resolve(args.file_path)
+      const filePath = resolve(ctx.cwd, args.file_path)
+      if (isSensitive(filePath)) {
+        return { content: safeStringify({ error: `Access to sensitive file is denied: ${args.file_path}` }), isError: true }
+      }
       if (!existsSync(filePath)) {
         return { content: safeStringify({ error: `File not found: ${filePath}` }), isError: true }
       }

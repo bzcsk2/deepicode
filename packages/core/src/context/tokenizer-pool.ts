@@ -31,9 +31,22 @@ export class TokenizerPool {
           entry.resolve(msg.result)
         }
       })
-      this.worker.on("error", () => { this.healthy = false })
+      this.worker.on("error", () => {
+        this.healthy = false
+        // resolve all pending tasks with fallback to prevent hangs
+        for (const [id, entry] of this.tasks) {
+          this.tasks.delete(id)
+          entry.resolve(fallbackEstimate([]))
+        }
+      })
       this.worker.on("exit", (code) => {
-        if (code !== 0) this.healthy = false
+        if (code !== 0) {
+          this.healthy = false
+          for (const [id, entry] of this.tasks) {
+            this.tasks.delete(id)
+            entry.resolve(fallbackEstimate([]))
+          }
+        }
       })
     } catch {
       this.healthy = false
@@ -60,7 +73,10 @@ export class TokenizerPool {
   }
 
   shutdown(): void {
-    this.worker?.terminate().catch(() => {})
+    for (const [, entry] of this.tasks) {
+      entry.reject(new Error("Tokenizer pool shut down"))
+    }
     this.tasks.clear()
+    this.worker?.terminate().catch(() => {})
   }
 }

@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
 import type { AgentTool } from "../../core/src/interface.js"
 import { safeStringify } from "./safe-stringify.js"
+import { isSensitive } from "./sensitive.js"
 
 export function createNotebookEditTool(): AgentTool {
   return {
@@ -30,6 +31,9 @@ export function createNotebookEditTool(): AgentTool {
       }
 
       const filePath = resolve(ctx.cwd, args.path)
+      if (isSensitive(filePath)) {
+        return { content: safeStringify({ error: `Access to sensitive file is denied: ${args.path}` }), isError: true }
+      }
       let raw: string
       try {
         raw = readFileSync(filePath, "utf-8")

@@ -81,15 +81,39 @@ async function runBash(command: string, cwd: string, timeoutMs: number, maxChars
   return await new Promise((resolve, reject) => {
     const isWindows = os.platform() === "win32"
     // Use detached to create a process group on Unix, so we can kill children (zombies)
-    const child = spawn("bash", ["-lc", command], { cwd, detached: !isWindows })
+    const child = spawn("bash", ["-lc", command], {
+      cwd, detached: !isWindows,
+      env: { ...process.env, GIT_EDITOR: "true", GIT_SEQUENCE_EDITOR: "true", EDITOR: "true" },
+    })
     
     let stdout = ""
     let stderr = ""
     let timedOut = false
     let done = false
+    let sigtermTimer: ReturnType<typeof setTimeout> | null = null
 
-    const killChild = () => {
+    const killChild = (graceful = false) => {
       try {
+        if (graceful) {
+          // SIGTERM first, then SIGKILL after grace period
+          if (!isWindows && child.pid) {
+            process.kill(-child.pid, "SIGTERM")
+          } else {
+            child.kill("SIGTERM")
+          }
+          sigtermTimer = setTimeout(() => {
+            try {
+              if (!isWindows && child.pid) {
+                process.kill(-child.pid, "SIGKILL")
+              } else {
+                child.kill("SIGKILL")
+              }
+            } catch {
+              child.kill("SIGKILL")
+            }
+          }, 5000)
+          return
+        }
         if (!isWindows && child.pid) {
           process.kill(-child.pid, "SIGKILL")
         } else {
@@ -103,6 +127,10 @@ async function runBash(command: string, cwd: string, timeoutMs: number, maxChars
     const finish = (exitCode: number) => {
       if (done) return
       done = true
+      if (sigtermTimer) {
+        clearTimeout(sigtermTimer)
+        sigtermTimer = null
+      }
       resolve({
         command,
         cwd,
@@ -115,19 +143,21 @@ async function runBash(command: string, cwd: string, timeoutMs: number, maxChars
 
     const timer = setTimeout(() => {
       timedOut = true
-      killChild()
+      killChild(true)
       finish(124)
     }, timeoutMs)
 
     if (signal) {
       if (signal.aborted) {
         clearTimeout(timer)
+        if (sigtermTimer) clearTimeout(sigtermTimer)
         killChild()
         finish(130)
         return
       }
       signal.addEventListener("abort", () => {
         clearTimeout(timer)
+        if (sigtermTimer) clearTimeout(sigtermTimer)
         killChild()
         finish(130)
       }, { once: true })
@@ -137,6 +167,7 @@ async function runBash(command: string, cwd: string, timeoutMs: number, maxChars
     child.stderr.on("data", (b) => { stderr += String(b) })
     child.on("error", (e) => {
       clearTimeout(timer)
+      if (sigtermTimer) clearTimeout(sigtermTimer)
       reject(e)
     })
     child.on("close", (code) => {

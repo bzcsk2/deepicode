@@ -4,14 +4,14 @@
 
 | Metric | Value |
 |--------|-------|
-| Total tests | 564 |
-| Passed | 561 |
+| Total tests | 583 |
+| Passed | 580 |
 | Failed | 0 |
 | Skipped | 3 (Worker env dep, tool integration) |
 | Test files | 45 |
 | Packages | 7 (core, tools, security, mcp) |
 | Last run | 2026-06-05 |
-| Assertions | 1023 |
+| Assertions | 1065 |
 
 ---
 
@@ -445,3 +445,45 @@ Fix: `PUNCT_RE` should exclude CJK range, e.g., `/[^\w\s一-鿿㐀-䶿豈-﫿]/g
 - `packages/security/src/permission.ts`: 新增 `isAllowed/isDenied/toJSON/fromJSON` 方法
 - `packages/security/__tests__/hooks.test.ts`: M14 测试补全异常后 hook 调用断言
 - `packages/tools/__tests__/security-e2e.test.ts`: 新文件，跨工具路径穿越测试
+
+---
+
+## Round 二十五 (2026-06-05): 中等 S/M 级测试全覆盖 — 580 pass
+
+### 新增测试 (19项)
+
+#### 中等项 (M1-M6, M9, M12, M13, M16)
+
+| # | 模块 | 测试 | 结果 | 说明 |
+|---|------|------|------|------|
+| M1 | 1.1 Context | fold force → yield 警告事件 | ✅ | ratio>0.80 时返回 force |
+| M2 | 1.1 Context | fold suggest + ratio 详情 | ✅ | 0.65<ratio≤0.80 时返回 suggest |
+| M3 | 1.1 Context | fold 低负载返回 none | ✅ | ratio≤0.65 时返回 none |
+| M4 | 1.5 Session | 系统消息被 Engine 过滤 | ✅ | Engine._loadSessionMessages filters role:system |
+| M5 | 1.5 Session | loadSession — 清空+加载 | ✅ | 验证旧消息被清除，新消息加载 |
+| M6 | 1.5 Session | recover — 静态工厂返回可用 engine | ✅ | 含 sessionId 和消息 |
+| M9 | 1.7 Engine+Loop | SessionWriter enqueue 写入 | ✅ | enqueue + flush 后磁盘有 JSONL |
+| M12 | 2.7 WebFetch | 正常 HTTPS + HTTP→HTTPS + redirect + HTML→text + 超大拒绝 + max_length 截断 | ✅ | 全 mock，6 个子测试 |
+| M13 | 2.8 WebSearch | 空查询/缺参数/num_results 上限/默认值/无结果 | ✅ | 5 个子测试，全 mock |
+| M16 | 7.1 工具链 | Task 完整流程 Create→List→Get→Update→Stop | ✅ | 端到端 |
+| M7 | 1.6 SSE Client | 超长单行 >100K chars 不 OOM | ✅ | (已记录) |
+| M8 | 1.6 SSE Client | 并发 chatCompletionsStream 不干扰 | ✅ | (已记录) |
+| M11 | 2.3 edit | 并发 edit 不同文件 | ✅ | (已记录) |
+| M14 | 5.2 HookManager | afterToolCall 异常不中断 | ✅ | (已记录) |
+| M15 | 5.3 FileSnapshot | SHA256 路径索引确定性 | ✅ | (已记录) |
+
+### 中等项剩余
+
+| # | 模块 | 说明 | 状态 |
+|---|------|------|------|
+| M10 | 2.2 write_file | 权限继承 — 父目录 mode 继承 | ⏳ |
+| M17 | 7.2 错误恢复 | 连续 stream 失败重试 | ✅ (已有覆盖) |
+| M18 | 7.2 错误恢复 | repair 失败不触发 API 重试 | ✅ (已有覆盖) |
+
+### 源码变更
+
+- `packages/core/__tests__/context.test.ts`: 新增 M1-M3 测试
+- `packages/core/__tests__/session.test.ts`: 新增 M4-M6, M9 测试
+- `packages/tools/__tests__/web-fetch.test.ts`: 新增 M12 测试
+- `packages/tools/__tests__/web-search.test.ts`: 新文件，M13 测试
+- `packages/tools/__tests__/task-tools.test.ts`: 新增 M16 测试

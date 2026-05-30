@@ -49,12 +49,16 @@ export function createCronTool(): AgentTool {
         if (!schedule) return { content: safeStringify({ error: "schedule is required for create action" }), isError: true }
         if (!command) return { content: safeStringify({ error: "command is required for create action" }), isError: true }
 
-        const existing = parseJobs(lines).find((j) => j.name === name)
+        // Sanitize: filter newlines to prevent crontab injection
+        const sanitizedCommand = command.replace(/[\n\r]/g, " ")
+        const sanitizedName = name.replace(/[\n\r]/g, "_")
+
+        const existing = parseJobs(lines).find((j) => j.name === sanitizedName)
         if (existing) {
-          return { content: safeStringify({ error: `Job "${name}" already exists. Delete it first or use a different name.` }), isError: true }
+          return { content: safeStringify({ error: `Job "${sanitizedName}" already exists. Delete it first or use a different name.` }), isError: true }
         }
 
-        const newLines = [...lines, "", `${JOB_MARKER}${name}`, schedule + " " + command]
+        const newLines = [...lines, "", `${JOB_MARKER}${sanitizedName}`, schedule + " " + sanitizedCommand]
         const setErr = setCrontab(newLines)
         if (setErr) return { content: safeStringify({ error: setErr }), isError: true }
 

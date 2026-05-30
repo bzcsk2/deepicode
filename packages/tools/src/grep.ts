@@ -58,7 +58,7 @@ function runSearch(pattern: string, searchPath: string, include?: string): strin
   try {
     const rgArgs = ["-n", "--no-heading"]
     if (include) rgArgs.push("-g", include)
-    rgArgs.push(pattern, searchPath)
+    rgArgs.push("--", pattern, searchPath)
     const result = spawnSync("rg", rgArgs, { encoding: "utf-8", timeout: 15000 })
     if (result.error || result.status === 127) throw result.error ?? new Error("rg not found")
     return result.stdout ?? ""
@@ -66,7 +66,7 @@ function runSearch(pattern: string, searchPath: string, include?: string): strin
     // rg not found or failed, fallback to grep
     const grepArgs = ["-rn"]
     if (include) grepArgs.push(`--include=${include}`)
-    grepArgs.push(pattern, searchPath)
+    grepArgs.push("--", pattern, searchPath)
     const result = spawnSync("grep", grepArgs, { encoding: "utf-8", timeout: 15000 })
     // grep returns exit code 1 when no matches found
     if (result.status === 1) return ""

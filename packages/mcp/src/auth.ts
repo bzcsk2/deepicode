@@ -31,9 +31,8 @@ export function createMcpAuthTool(): AgentTool {
           if (typeof args.server !== "string" || typeof args.api_key !== "string") {
             return { content: safeStringify({ error: "server and api_key are required for set" }), isError: true }
           }
-          // In a real implementation, store in encrypted config
           return {
-            content: safeStringify({ status: "stored", server: args.server }),
+            content: safeStringify({ status: "not_implemented", message: "MCP auth storage not implemented" }),
             isError: false,
           }
         }

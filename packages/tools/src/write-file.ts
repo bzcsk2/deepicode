@@ -4,6 +4,8 @@ import type { AgentTool } from "../../core/src/interface.js"
 import { isSensitive } from "./sensitive.js"
 import { safeStringify } from "./safe-stringify.js"
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
+
 export function createWriteFileTool(): AgentTool {
   return {
     name: "write_file",
@@ -24,6 +26,10 @@ export function createWriteFileTool(): AgentTool {
       }
       if (typeof args.content !== "string") {
         return { content: safeStringify({ error: "content is required" }), isError: true }
+      }
+
+      if (args.content.length > MAX_FILE_SIZE) {
+        return { content: safeStringify({ error: `Content too large (${args.content.length} bytes). Max allowed: ${MAX_FILE_SIZE} bytes.` }), isError: true }
       }
 
       const path = resolve(ctx.cwd, args.path)

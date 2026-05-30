@@ -51,7 +51,7 @@ export function SessionPicker({ onSelect, onCancel }: SessionPickerProps) {
       return;
     }
     if (key.downArrow) {
-      setSelIdx(prev => Math.min(sessions.length - 1, prev + 1));
+      setSelIdx(prev => sessions.length > 0 ? Math.min(sessions.length - 1, prev + 1) : 0);
       return;
     }
     if (key.return) {

@@ -42,6 +42,8 @@ export class ContextManager {
     this.tokenizer = new TokenizerPool()
   }
 
+  getContextWindow(): number { return this.contextWindow }
+
   updateContextWindow(window: number): void {
     this.contextWindow = window
   }

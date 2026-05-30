@@ -303,3 +303,168 @@ describe("SessionLoader - system message behavior", () => {
     expect(msgs[0].role).toBe("system")
   })
 })
+
+// M4: system message filtering — SessionLoader preserves, engine filters
+describe("M4: system message filtering", () => {
+  let tmpDir: string
+  let sessionDir: string
+
+  beforeEach(async () => {
+    tmpDir = join(tmpdir(), `deepicode-session-filter-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    sessionDir = join(tmpDir, ".deepicode", "sessions")
+    await mkdir(sessionDir, { recursive: true })
+    SessionLoader.sessionDir = sessionDir
+  })
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+  })
+
+  it("should preserve system messages in SessionLoader output (engine filters them later)", async () => {
+    const sessionId = "test-session-filter"
+    const sessionPath = join(sessionDir, `${sessionId}.jsonl`)
+    const records = [
+      { ts: 1, type: "messages", payload: [
+        { role: "system", content: "You are a helpful assistant" },
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Hi" },
+      ]},
+    ]
+    await writeFile(sessionPath, records.map(r => JSON.stringify(r)).join("\n") + "\n", "utf-8")
+    const messages = await SessionLoader.read(sessionId)
+    expect(messages).toHaveLength(3)
+  })
+
+  it("should verify engine._loadSessionMessages filters system role", async () => {
+    const sessionId = "test-engine-filter"
+    const sessionPath = join(sessionDir, `${sessionId}.jsonl`)
+    const records = [
+      { ts: 1, type: "messages", payload: [
+        { role: "system", content: "You are a helpful assistant" },
+        { role: "user", content: "Hello" },
+      ]},
+    ]
+    await writeFile(sessionPath, records.map(r => JSON.stringify(r)).join("\n") + "\n", "utf-8")
+
+    const { ReasonixEngine } = await import("../src/engine.js")
+    const config = { apiKey: "test", baseUrl: "http://localhost", model: "test", maxTokens: 1000, temperature: 0, maxContextRounds: 20, contextWindow: 128000 }
+    const engine = new ReasonixEngine(config as any, undefined, sessionId)
+    await engine.loadSession(sessionId)
+    const state = engine.getState()
+    const systemMsgs = state.messages.filter(m => m.role === "system")
+    // System messages from loaded session should be filtered out
+    // Engine re-injects its own system prompt via prefix.build (not called here)
+    expect(systemMsgs.length).toBe(0)
+  })
+})
+
+describe("M5: loadSession", () => {
+  let tmpDir: string
+  let sessionDir: string
+
+  beforeEach(async () => {
+    tmpDir = join(tmpdir(), `deepicode-loadsession-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    sessionDir = join(tmpDir, ".deepicode", "sessions")
+    await mkdir(sessionDir, { recursive: true })
+    SessionLoader.sessionDir = sessionDir
+  })
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+  })
+
+  it("should clear current context and load new session messages", async () => {
+    const sessionId = "test-loadsession"
+    const sessionPath = join(sessionDir, `${sessionId}.jsonl`)
+    const records = [
+      { ts: 1, type: "messages", payload: [
+        { role: "user", content: "Hello from session" },
+        { role: "assistant", content: "Hi from session" },
+      ]},
+    ]
+    await writeFile(sessionPath, records.map(r => JSON.stringify(r)).join("\n") + "\n", "utf-8")
+
+    const { ReasonixEngine } = await import("../src/engine.js")
+    const config = { apiKey: "test", baseUrl: "http://localhost", model: "test", maxTokens: 1000, temperature: 0, maxContextRounds: 20, contextWindow: 128000 }
+    const engine = new ReasonixEngine(config as any, undefined, "original-session")
+
+    // Add some messages first
+    engine.getContextManager().log.append({ role: "user", content: "Original message" })
+
+    // Now load new session
+    const messages = await engine.loadSession(sessionId)
+    expect(messages).toHaveLength(2)
+
+    // Context should now have session messages, not original ones
+    const state = engine.getState()
+    const userMsgs = state.messages.filter(m => m.role === "user")
+    expect(userMsgs.some(m => m.content === "Original message")).toBe(false)
+    expect(userMsgs.some(m => m.content === "Hello from session")).toBe(true)
+  })
+})
+
+describe("M6: recover", () => {
+  let tmpDir: string
+  let sessionDir: string
+
+  beforeEach(async () => {
+    tmpDir = join(tmpdir(), `deepicode-recover-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    sessionDir = join(tmpDir, ".deepicode", "sessions")
+    await mkdir(sessionDir, { recursive: true })
+    SessionLoader.sessionDir = sessionDir
+  })
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+  })
+
+  it("should create a usable engine instance from session", async () => {
+    const sessionId = "test-recover"
+    const sessionPath = join(sessionDir, `${sessionId}.jsonl`)
+    const records = [
+      { ts: 1, type: "messages", payload: [
+        { role: "user", content: "Recover test" },
+      ]},
+    ]
+    await writeFile(sessionPath, records.map(r => JSON.stringify(r)).join("\n") + "\n", "utf-8")
+
+    const { ReasonixEngine } = await import("../src/engine.js")
+    const config = { apiKey: "test", baseUrl: "http://localhost", model: "test", maxTokens: 1000, temperature: 0, maxContextRounds: 20, contextWindow: 128000 }
+    const engine = await ReasonixEngine.recover(config as any, sessionId)
+    expect(engine).toBeInstanceOf(ReasonixEngine)
+    const state = engine.getState()
+    expect(state.messages.length).toBeGreaterThanOrEqual(1)
+    expect(state.sessionId).toBe(sessionId)
+  })
+})
+
+describe("M9: SessionWriter enqueue", () => {
+  let tmpDir: string
+
+  beforeEach(async () => {
+    tmpDir = join(tmpdir(), `deepicode-enqueue-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    await mkdir(tmpDir, { recursive: true })
+  })
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+  })
+
+  it("should enqueue a messages record and flush to disk", async () => {
+    const sessionPath = join(tmpDir, "test.jsonl")
+    const writer = new AsyncSessionWriter(sessionPath)
+    await writer.init()
+
+    const payload = [{ role: "user", content: "test" }]
+    writer.enqueue({ ts: Date.now(), type: "messages", payload })
+
+    // Wait for flush
+    await new Promise(r => setTimeout(r, 100))
+
+    const content = await readFile(sessionPath, "utf-8")
+    expect(content.trim()).toBeTruthy()
+    const rec = JSON.parse(content.trim())
+    expect(rec.type).toBe("messages")
+    expect(rec.payload).toEqual(payload)
+  })
+})

@@ -32,7 +32,7 @@ const MAX_TURNS = 10
 export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
   const { ctx, client, toolExecutor, toolSpecs, config, signal, sessionWriter, stats, isInterrupted, appendToolResult } = opts
 
-  const contextWindow = ctx['contextWindow'] ?? 128_000  // resolve from ContextManager
+  const contextWindow = ctx.getContextWindow()
 
   // fold check before first turn (non-blocking: kicks off async but uses sync fallback immediately)
   const foldP = ctx.getFoldDecision()
@@ -145,6 +145,8 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
                 yield toolEvent
                 sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: toolEvent })
               }
+              // persist messages with tool results for crash recovery
+              sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: ctx.buildMessages() })
             } catch {
               // append error results for all tool calls if execution is interrupted
               for (const tc of toolCalls) {

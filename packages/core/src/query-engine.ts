@@ -27,11 +27,17 @@ export class QueryEngine {
 
   async query(input: string, agentConfig?: AgentConfig): Promise<string> {
     let result = ""
+    let hasToolCalls = false
     for await (const event of this.engine.submit(input, agentConfig)) {
       if (event.role === "assistant_delta" && event.content) {
         result += event.content
       }
+      if (event.role === "tool_call_delta") {
+        hasToolCalls = true
+      }
     }
+    // Distinguish empty reply from tool-call-only response
+    if (!result && hasToolCalls) return "[tool calls only — use stream() to access tool call details]"
     return result
   }
 

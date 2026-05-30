@@ -31,7 +31,6 @@ export function estimateTokens(messages: Array<{ role?: string; content?: string
 export function getFoldDecision(used: number, total: number): FoldDecision {
   const ratio = total > 0 ? used / total : 0
   if (ratio <= 0.65) return { action: "none", ratio, used, total }
-  if (ratio <= 0.75) return { action: "suggest", ratio, used, total }
   if (ratio <= 0.80) return { action: "suggest", ratio, used, total }
   return { action: "force", ratio, used, total }
 }

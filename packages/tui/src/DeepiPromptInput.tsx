@@ -116,11 +116,19 @@ export function DeepiPromptInput({ onSubmit, isLoading, disabled, onCancel }: De
       return;
     }
 
-    if (key.backspace || key.delete) {
+    if (key.backspace) {
       const pos = cursorRef.current;
       if (pos > 0) {
         setInput(prev => prev.slice(0, pos - 1) + prev.slice(pos));
         cursorRef.current = pos - 1;
+      }
+      return;
+    }
+
+    if (key.delete) {
+      const pos = cursorRef.current;
+      if (pos < input.length) {
+        setInput(prev => prev.slice(0, pos) + prev.slice(pos + 1));
       }
       return;
     }

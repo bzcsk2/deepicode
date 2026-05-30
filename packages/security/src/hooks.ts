@@ -51,7 +51,7 @@ export class HookManager {
   async runAfterToolCall(toolName: string, result: ToolCallResult): Promise<void> {
     for (const hooks of this.hooks) {
       if (hooks.afterToolCall) {
-        await hooks.afterToolCall(toolName, result)
+        try { await hooks.afterToolCall(toolName, result) } catch { /* swallow — fire-and-forget */ }
       }
     }
   }

@@ -113,18 +113,16 @@ describe("read_file", () => {
     expect(p.error).toContain("modified since last read")
   })
 
-  it("should handle binary file with random bytes without crashing", async () => {
+  it("should reject binary files", async () => {
     const filePath = join(tmpDir, "random.bin")
     const buf = Buffer.alloc(256)
     for (let i = 0; i < 256; i++) buf[i] = i
     writeFileSync(filePath, buf)
     const tool = createReadFileTool()
     const r = await tool.execute({ path: filePath }, ctx(tmpDir))
-    // binary content may cause UTF-8 decoding issues; should not crash
-    // Currently reads with replacement characters (no explicit binary warning)
-    const p = JSON.parse(r.content as string)
-    expect(typeof p.content).toBe("string")
-    expect(p.content).toBeTruthy()
+    // Binary files are now rejected with an error
+    expect(r.isError).toBe(true)
+    expect(r.content).toContain("binary")
   })
 })
 

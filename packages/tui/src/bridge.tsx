@@ -65,8 +65,13 @@ export function createBridge(
 
           case "assistant_final":
             if (activeAssistantMsg) {
-              activeAssistantMsg.content = assistantContent;
-              setState(prev => ({ ...prev, streamingText: null }));
+              setState(prev => ({
+                ...prev,
+                streamingText: null,
+                messages: prev.messages.map(m =>
+                  m === activeAssistantMsg ? { ...m, content: assistantContent } : m
+                ),
+              }));
             }
             activeAssistantMsg = null;
             assistantContent = "";
@@ -130,8 +135,8 @@ export function createBridge(
                 cacheHit: prev.tokens.cacheHit + addCacheHit,
                 cacheMiss: prev.tokens.cacheMiss + addCacheMiss,
               },
-              // Cumulative input tokens ≈ current context usage
-              contextUsage: prev.tokens.input + addInput,
+              // Current request's prompt tokens ≈ current context size
+              contextUsage: addInput,
             }));
             break;
           }
