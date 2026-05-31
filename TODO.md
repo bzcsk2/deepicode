@@ -169,22 +169,9 @@ engine.submit()
 
 已有回归测试：`packages/tui/__tests__/bridge.test.ts`。
 
-### F3/F5：StreamingCard 与 token 速率
+### F3/F5：StreamingCard 与 token 速率 ✅
 
-**目标**：合并完成。新增轻量 `StreamingCard` 显示流式文本、Spinner 和 token/s，不迁移 Reasonix Store。
-
-**实现思路**：
-
-- 在 TUI 显示层新增 `StreamingCard.tsx`，由 `DeepiMessages.tsx` 在 `turn.streamingText !== null` 时使用。
-- provider 的 `usage` 通常在阶段末尾才到达。流式阶段优先根据新增字符做近似 token 采样，阶段末尾再用 `usage` 校准；不要为了显示速率修改 Core API。
-- token/s 应基于时间窗口平滑，避免每个字符触发跳动。
-- 流结束后继续使用 Markdown 渲染最终 assistant 文本。
-
-**验收**：
-
-- 流式阶段显示光标、Spinner、token/s。
-- 完成后替换为 Markdown，不重复渲染 assistant 消息。
-- 不影响 reasoning 和 tool cards 折叠。
+已实现。新增 `StreamingCard` 组件（Reasonix 简化版）：流式阶段显示 Spinner + token/s 估算（text.length/4），完成后替换为 Markdown 渲染。`TurnView` 新增 `startTs` 字段。
 
 ### T20：多行输入
 

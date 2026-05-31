@@ -6,6 +6,7 @@ import { Markdown } from './MarkdownRenderer.js';
 import { Card } from './reasonix/Card.js';
 import { CardHeader } from './reasonix/CardHeader.js';
 import { Spinner } from './reasonix/Spinner.js';
+import { StreamingCard } from './reasonix/StreamingCard.js';
 import { ToolCard, type ToolCardData } from './reasonix/ToolCard.js';
 import { FG, SURFACE, TONE } from './reasonix/tokens.js';
 
@@ -111,7 +112,7 @@ function PlainMessage({ message }: { message: ChatMessage }) {
   if (message.role === 'assistant') {
     return (
       <Card>
-        <Box flexDirection="column" backgroundColor={SURFACE.bgAssistant} paddingX={1} paddingY={1}>
+        <Box flexDirection="column" paddingX={1} paddingY={1}>
           <CardHeader glyph="\u25CF" tone={TONE.ok} title="Assistant" />
           <Box paddingLeft={1}><MessageContent text={message.content ?? ''} /></Box>
         </Box>
@@ -129,21 +130,18 @@ function Turn({ turn, detailsOpen }: { turn: TurnView; detailsOpen: boolean }) {
       {turn.reasoningText && <ReasoningCard text={turn.reasoningText} isOpen={showDetails} />}
       <ToolUseSection tools={turn.tools} isOpen={showDetails} />
       {(turn.streamingText !== null || turn.assistantText) && (
-        <Card>
-          <Box flexDirection="column" backgroundColor={SURFACE.bgAssistant} paddingX={1} paddingY={1}>
-            <CardHeader
-              glyph="\u25CF"
-              tone={TONE.ok}
-              title="Assistant"
-              right={turn.streamingText !== null ? <Spinner kind="braille" color={TONE.brand} bold /> : undefined}
-            />
-            <Box paddingLeft={1}>
-              {turn.streamingText !== null
-                ? <Text wrap="wrap">{turn.streamingText}<Text color={TONE.ok}>{'\u258A'}</Text></Text>
-                : <MessageContent text={turn.assistantText} />}
-            </Box>
-          </Box>
-        </Card>
+        turn.streamingText !== null
+          ? <StreamingCard text={turn.streamingText} startTs={turn.startTs} />
+          : (
+            <Card>
+              <Box flexDirection="column" paddingX={1} paddingY={1}>
+                <CardHeader glyph={'\u2039'} tone={TONE.ok} title="Reply" />
+                <Box paddingLeft={1}>
+                  <MessageContent text={turn.assistantText} />
+                </Box>
+              </Box>
+            </Card>
+          )
       )}
       {turn.isLoading && turn.streamingText === null && !turn.reasoningText && turn.tools.length === 0 && (
         <Box>

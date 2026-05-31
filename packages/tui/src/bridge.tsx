@@ -20,6 +20,7 @@ export interface TurnView {
   tools: ToolStatus[];
   isLoading: boolean;
   cancelled?: boolean;
+  startTs: number;
 }
 
 export type TimelineItem =
@@ -121,6 +122,7 @@ export function createBridge(
           reasoningText: '',
           tools: [],
           isLoading: true,
+          startTs: Date.now(),
         },
       }],
     }));
