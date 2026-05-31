@@ -24,7 +24,9 @@
       "@deepicode/security": ["./packages/security/src/index.ts"],
       "@deepicode/security/*": ["./packages/security/src/*"],
       "@deepicode/mcp": ["./packages/mcp/src/index.ts"],
-      "@deepicode/mcp/*": ["./packages/mcp/src/*"]
+      "@deepicode/mcp/*": ["./packages/mcp/src/*"],
+      "@deepicode/tools": ["./packages/tools/src/index.ts"],
+      "@deepicode/tools/*": ["./packages/tools/src/*"]
     }
   },
   "include": ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx", "types/**/*.d.ts"],

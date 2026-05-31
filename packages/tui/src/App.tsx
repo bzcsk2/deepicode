@@ -104,6 +104,7 @@ export function App({ engine, config }: AppProps) {
   bridgeRef.current = bridge;
   const contextTotal = config.contextWindow ?? 128_000;
   const engineRef = useRef(engine);
+  const mountedRef = useRef(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const appendMessage = useCallback((message: ChatMessage) => {
     setBridgeState(prev => ({
@@ -125,6 +126,12 @@ export function App({ engine, config }: AppProps) {
   useEffect(() => {
     process.on('SIGINT', doInterrupt);
     return () => { process.off('SIGINT', doInterrupt); };
+  }, []);
+
+  // Track mounted state
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
   }, []);
 
   // \x03 character handler (raw mode working properly — Ctrl+C arrives as character)
@@ -170,7 +177,7 @@ export function App({ engine, config }: AppProps) {
       return;
     }
     if (text === '/skill') {
-      import("../../tools/src/skills/index.js").then(async ({ createSkillTool }) => {
+      import("@deepicode/tools").then(async ({ createSkillTool }) => {
         const tool = createSkillTool()
         const result = await tool.execute({ command: "list" }, { cwd: process.cwd(), sessionId: "" })
         let msg: string
@@ -214,6 +221,8 @@ export function App({ engine, config }: AppProps) {
     setShowSessionPicker(false);
     // Load session messages into the current engine
     const msgs = await engineRef.current.loadSession(sessionId);
+    // Guard against post-unmount setState
+    if (!mountedRef.current) return;
     // Reset bridge state with recovered messages
     setBridgeState({
       ...initialState,

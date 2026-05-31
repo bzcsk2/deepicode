@@ -126,35 +126,13 @@ bun test packages/mcp/__tests__/mcp-host.test.ts packages/mcp/__tests__/mcp-tool
 
 已修复。改用 `readFile`/`writeFile` 异步 API，写入通过临时文件 + `rename()` 原子替换，保留原始文件权限。9 个测试通过。
 
-### N2：修正 `/skill` 跨包 import
+### N2：修正 `/skill` 跨包 import ✅
 
-**现状**：`packages/tui/src/App.tsx` 使用 `../../tools/src/skills/index.js` 相对路径动态 import，破坏包边界。
+已修复。`App.tsx` 的 `../../tools/src/skills/index.js` 改为 `@deepicode/tools`，tsconfig.json 新增路径映射。
 
-**建议实现**：
+### N3：避免 SessionPicker 卸载后 setState ✅
 
-- 为 `@deepicode/tools` 暴露稳定入口，或增加明确的 package alias。
-- 保留动态加载，避免启动 TUI 时不必要地加载全部 skill 元数据。
-- 不要把 skills 文件复制进 TUI 包。
-
-**验收**：
-
-- `/skill` 可正常列出 skills。
-- TUI 不再出现跨包 `../../tools/src/...` import。
-
-### N3：避免 SessionPicker 卸载后 setState
-
-**现状**：`handleSessionSelect()` 在异步 `loadSession()` 后直接更新状态。如果组件期间卸载，可能触发卸载后 setState。
-
-**建议实现**：
-
-- 使用 `useEffect()` cleanup 维护 mounted ref，或使用递增 request id。
-- 多次选择 session 时只允许最后一次结果生效。
-- 不要更改 `ReasonixEngine.loadSession()` 的系统消息过滤行为。
-
-**验收**：
-
-- 卸载期间完成异步加载不会 setState。
-- 连续快速选择两个 session，最终显示第二个。
+已修复。App.tsx 新增 `mountedRef` 跟踪组件挂载状态，`handleSessionSelect` 在异步 `loadSession` 后检查 `mountedRef.current`，卸载后不 setState。
 
 ### N4：跨 provider 的 tool call id 规范化
 
