@@ -14,6 +14,7 @@ import { FullscreenLayout } from './FullscreenLayout.js';
 import { isFullscreenEnvEnabled } from './fullscreen.js';
 import { ModelPicker } from './ModelPicker.js';
 import { SessionPicker } from './SessionPicker.js';
+import { PermissionPrompt } from './PermissionPrompt.js';
 
 // ---- Module-level interrupt state (shared by SIGINT handler + useInput \x03 handler) ----
 
@@ -139,14 +140,6 @@ export function App({ engine, config }: AppProps) {
   const [activeAgent, setActiveAgent] = useState(engine.getAgentName?.() ?? 'build');
 
   const handleSubmit = useCallback((text: string) => {
-    // Permission confirmation prompt: next input is the response
-    if (bridgeState.permissionPrompt) {
-      const allowed = text.trim().toLowerCase() === 'y';
-      engineRef.current.respondPermission(allowed);
-      setBridgeState(prev => ({ ...prev, permissionPrompt: null }));
-      return;
-    }
-
     if (text === '/exit' || text === '/bye') {
       exitPending = true;
       engineRef.current.interrupt();
@@ -242,6 +235,11 @@ export function App({ engine, config }: AppProps) {
     setShowSessionPicker(false);
   }, []);
 
+  const handlePermissionSelect = useCallback((allow: boolean, alwaysAllow?: boolean) => {
+    engineRef.current.respondPermission(allow, alwaysAllow);
+    setBridgeState(prev => ({ ...prev, permissionPrompt: null }));
+  }, []);
+
   const providerLabel = getProviderLabel(activeProvider);
 
   if (showModelPicker) {
@@ -291,9 +289,11 @@ export function App({ engine, config }: AppProps) {
         </Box>
       )}
       {bridgeState.permissionPrompt && (
-        <Box paddingX={1} marginTop={1}>
-          <Text color="warning" bold>🔐 {bridgeState.permissionPrompt}</Text>
-        </Box>
+        <PermissionPrompt
+          toolName={bridgeState.permissionPrompt.toolName}
+          args={bridgeState.permissionPrompt.args}
+          onSelect={handlePermissionSelect}
+        />
       )}
     </>
   );
@@ -303,6 +303,7 @@ export function App({ engine, config }: AppProps) {
       <DeepiPromptInput
         onSubmit={handleSubmit}
         isLoading={bridgeState.isLoading}
+        disabled={!!bridgeState.permissionPrompt}
         onCancel={handleCancel}
       />
       <StatusBar

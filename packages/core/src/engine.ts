@@ -60,6 +60,25 @@ export class ReasonixEngine implements CoreEngine {
   /** prefix.build 缓存：避免每次 submit 重复重建（P3-4-2） */
   private prefixCacheKey = ""
 
+  /** exec 工具权限确认：pending Promise 由 TUI 响应 resolve */
+  private pendingPermission: { resolve: (v: boolean) => void; toolName: string; args: Record<string, unknown> } | null = null
+
+  /** 流式执行器内部调用，等待 TUI 返回确认结果 */
+  private requestPermission = async (toolName: string, args: Record<string, unknown>): Promise<boolean> => {
+    return new Promise(resolve => { this.pendingPermission = { resolve, toolName, args } })
+  }
+
+  /** TUI 调用以响应权限确认提示 */
+  respondPermission(allow: boolean, alwaysAllow?: boolean): void {
+    if (this.pendingPermission) {
+      if (allow && alwaysAllow) {
+        this.permissionEngine.addAllowRule({ toolName: this.pendingPermission.toolName })
+      }
+      this.pendingPermission.resolve(allow)
+      this.pendingPermission = null
+    }
+  }
+
   constructor(config: DeepicodeConfig, onStart?: () => void, sessionId?: string, customClient?: DeepSeekClient) {
     this.config = config
     this.ctx = new ContextManager(config.maxContextRounds, config.contextWindow)
@@ -68,7 +87,7 @@ export class ReasonixEngine implements CoreEngine {
     this.currentAgent = "build"
     this.permissionEngine = new PermissionEngine()
     this.hookManager = new HookManager()
-    this.toolExecutor = new StreamingToolExecutor(this.tools, this.sessionId, undefined, this.permissionEngine, this.hookManager)
+    this.toolExecutor = new StreamingToolExecutor(this.tools, this.sessionId, undefined, this.permissionEngine, this.hookManager, this.requestPermission)
     this.onStart = onStart
     this.onStart?.()
 
@@ -226,7 +245,7 @@ export class ReasonixEngine implements CoreEngine {
 
       for await (const event of runLoop(loopOpts)) {
         yield event
-        this.hookManager.runOnLoopEvent(event as unknown as Record<string, unknown>)
+        try { this.hookManager.runOnLoopEvent(event as unknown as Record<string, unknown>) } catch { /* hook error — fire-and-forget */ }
       }
     } finally {
       if (this.activeAbortController === abortController) {

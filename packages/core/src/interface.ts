@@ -18,6 +18,7 @@ export type LoopEventRole =
   | "strategy_estimate_refined"
   | "tool_progress"
   | "usage"
+  | "permission_ask"
 
 export interface LoopEvent {
   role: LoopEventRole
@@ -92,6 +93,7 @@ export interface CoreEngine {
   switchAgent(agentName: string): string
   getAgentName(): string
   resolveTierDecision(tier: string): void
+  respondPermission(allow: boolean, alwaysAllow?: boolean): void
 }
 
 export interface AgentConfig {

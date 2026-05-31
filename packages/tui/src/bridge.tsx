@@ -19,7 +19,7 @@ export interface BridgeState {
   contextUsage: number;
   warnings: string[];
   error: string | null;
-  permissionPrompt: string | null;
+  permissionPrompt: { toolName: string; args: Record<string, unknown> } | null;
 }
 
 export function createBridge(
@@ -181,12 +181,15 @@ export function createBridge(
             // Phase 2 events — not yet implemented, ignore
             break;
 
-          case "permission_ask":
+          case "permission_ask": {
+            let args: Record<string, unknown> = {};
+            try { args = JSON.parse(event.content ?? '{}'); } catch {}
             setState(prev => ({
               ...prev,
-              permissionPrompt: `Allow ${event.toolName ?? 'tool'}? [y/n] ${event.content ?? ''}`,
+              permissionPrompt: { toolName: event.toolName ?? 'unknown', args },
             }));
             break;
+          }
 
           default: {
             const _exhaustiveCheck: never = event.role;
