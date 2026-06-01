@@ -1,6 +1,6 @@
 # Deepicode 完成记录
 
-最后更新：2026-05-31（高级工具补齐，592 tests）
+最后更新：2026-06-01（i18n + T40/T41，597 tests）
 
 本文按 **阶段 (Phase)** + **时间线** 记录已完成内容。
 
@@ -11,11 +11,12 @@
 | 指标 | 状态 |
 |------|------|
 | TypeScript 编译 | `bun run typecheck` 零错误 |
-| 测试 | `bun test` 592 tests；`FileSnapshot` 同毫秒快照排序已用递增序号修复 |
+| 测试 | `bun test` 597 tests；`FileSnapshot` 同毫秒快照排序已用递增序号修复 |
 | 运行时 | Bun |
 | API 提供商 | DeepSeek / Zen (Free) / Mimo |
-| TUI 框架 | Ink (React)，复制自 best-claude-code |
+| TUI 框架 | Ink 7 + React 19（@deepicode/ink），Reasonix 显示组件 |
 | 会话持久化 | JSONL 写入 `.deepicode/sessions/` |
+| i18n | 中英文切换，`/lang` 命令，`.deepicode/lang.json` 持久化 |
 
 ---
 
@@ -783,5 +784,17 @@ AppState + QueryEngine + Build/Plan Agent。详见 Phase 3 Step 3.2。
 | M16 | 多轮工具链 | Task 完整流程 — Create→List→Get→Update→Stop |
 | M17 | 错误恢复 | 连续 stream 失败 → 重试，第三次终止 |
 | M18 | 错误恢复 | repair 失败 → 不触发 API 重试 |
+
+---
+
+## 十一、本次会话完成项（2026-06-01）
+
+| 编号 | 内容 | 实现 | 关键文件 |
+|------|------|------|----------|
+| T30 | i18n 基础设施 | `strings.ts` + `zh-CN.ts` + `en.ts` + `persist.ts` + `index.ts` | `packages/tui/src/i18n/` |
+| T31 | 替换硬编码字符串 | 14 个文件 ~55 个字符串 | `DeepiPromptInput`, `PermissionPrompt`, `DeepiMessages`, `App`, `bridge`, `StatusBar`, `SessionPicker`, `ModelPicker`, `CommandAutocomplete`, `StreamingCard`, `ToolCard`, `stringUtils` |
+| T32 | /lang 命令 | 循环切换 zh-CN ↔ en，持久化 `.deepicode/lang.json` | `App.tsx`, `i18n/persist.ts` |
+| T40 | 虚拟列表优化 | React.memo + useMemo，500 items 0.3ms | `DeepiMessages.tsx` |
+| T41 | 消息搜索 | Ctrl+F SearchOverlay，useSearchHighlight | `SearchOverlay.tsx` |
 
 ---
