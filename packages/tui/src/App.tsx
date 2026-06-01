@@ -83,6 +83,7 @@ const initialState: BridgeState = {
   timeline: [],
   isLoading: false,
   messageQueue: [],
+  pendingInstructionCount: 0,
   tokens: { input: 0, output: 0, cacheHit: 0, cacheMiss: 0 },
   contextUsage: 0,
   warnings: [],
@@ -344,6 +345,7 @@ export function App({ engine, config }: AppProps) {
         cacheMissTokens={bridgeState.tokens.cacheMiss}
         contextUsed={bridgeState.contextUsage}
         contextTotal={contextTotal}
+        pendingInstructionCount={bridgeState.pendingInstructionCount}
         statusMessage={statusMessage}
       />
     </Box>

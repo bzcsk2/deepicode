@@ -73,6 +73,8 @@ export const en: Strings = {
   unknownError: 'Unknown error',
   unknownWarning: 'Unknown warning',
   unknown: 'unknown',
+  // P3: Mid-session instruction queue
+  pendingTasks: 'Pending:',
   // stringUtils
   plural: (n, word) => n === 1 ? word : word + 's',
 };

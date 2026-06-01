@@ -73,6 +73,8 @@ export const zhCN: Strings = {
   unknownError: '未知错误',
   unknownWarning: '未知警告',
   unknown: '未知',
+  // P3: Mid-session instruction queue
+  pendingTasks: '待注入:',
   // stringUtils
   plural: (n, word) => n === 1 ? word : word + 's',
 };

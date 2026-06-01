@@ -32,6 +32,7 @@ export interface BridgeState {
   timeline: TimelineItem[];
   isLoading: boolean;
   messageQueue: string[];
+  pendingInstructionCount: number;
   tokens: { input: number; output: number; cacheHit: number; cacheMiss: number };
   contextUsage: number;
   warnings: string[];
@@ -92,6 +93,19 @@ export function createBridge(
 
   const submit = async (text: string) => {
     if (running) {
+      // P3: Try injecting into current submit first
+      const result = engine.enqueueInstruction(text);
+      if (result.status === 'queued') {
+        setState(prev => ({ ...prev, pendingInstructionCount: result.queueLength }));
+        return;
+      }
+      if (result.status === 'full') {
+        // Queue full — fall back to messageQueue so no message is lost
+        setState(prev => ({ ...prev, messageQueue: [...prev.messageQueue, text] }));
+        return;
+      }
+      if (result.status === 'ignored') return;
+      // idle race — fall back to messageQueue
       setState(prev => ({ ...prev, messageQueue: [...prev.messageQueue, text] }));
       return;
     }
@@ -263,7 +277,11 @@ export function createBridge(
             break;
 
           case 'status':
-            if (event.content && event.content !== 'interrupted' && event.content !== 'tools_completed') {
+            if (event.metadata?.kind === 'instruction_injected') {
+              // P3: Update injection count from Core metadata
+              const queueLen = typeof event.metadata.queueLength === 'number' ? event.metadata.queueLength : 0;
+              setState(prev => ({ ...prev, pendingInstructionCount: queueLen }));
+            } else if (event.content && event.content !== 'interrupted' && event.content !== 'tools_completed') {
               setState(prev => ({ ...prev, warnings: [...prev.warnings, event.content!] }));
             }
             break;

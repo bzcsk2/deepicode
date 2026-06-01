@@ -11,6 +11,7 @@ interface StatusBarProps {
   cacheMissTokens: number;
   contextUsed: number;
   contextTotal: number;
+  pendingInstructionCount?: number;
   statusMessage?: string | null;
 }
 
@@ -26,7 +27,7 @@ function cacheRate(hit: number, miss: number): string {
   return `${Math.round((hit / total) * 100)}%`;
 }
 
-export function StatusBar({ model, provider, agent, inputTokens, outputTokens, cacheHitTokens, cacheMissTokens, contextUsed, contextTotal, statusMessage }: StatusBarProps) {
+export function StatusBar({ model, provider, agent, inputTokens, outputTokens, cacheHitTokens, cacheMissTokens, contextUsed, contextTotal, pendingInstructionCount, statusMessage }: StatusBarProps) {
   const rate = cacheRate(cacheHitTokens, cacheMissTokens);
   return (
     <Box width="100%" flexDirection="column">
@@ -35,6 +36,11 @@ export function StatusBar({ model, provider, agent, inputTokens, outputTokens, c
           <Text inverse color="warning">{` ⚠ ${statusMessage} `}</Text>
         </Box>
       )}
+      {pendingInstructionCount ? (
+        <Box>
+          <Text inverse color="success">{` 📥 ${t().pendingTasks}${pendingInstructionCount} `}</Text>
+        </Box>
+      ) : null}
       <Box width="100%" flexDirection="row">
         <Text inverse>{` ${provider}`}</Text>
         <Text inverse>{` ${model} `}</Text>

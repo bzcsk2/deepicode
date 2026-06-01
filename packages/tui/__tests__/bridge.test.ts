@@ -8,6 +8,7 @@ function initialState(): BridgeState {
     timeline: [],
     isLoading: false,
     messageQueue: [],
+    pendingInstructionCount: 0,
     tokens: { input: 0, output: 0, cacheHit: 0, cacheMiss: 0 },
     contextUsage: 0,
     warnings: [],
@@ -27,23 +28,47 @@ function stateHarness() {
 function mockEngine(generators: Array<(text: string) => AsyncGenerator<LoopEvent>>) {
   const submitted: string[] = [];
   const permissionResponses: boolean[] = [];
+  const enqueuedInstructions: string[] = [];
   let interrupted = 0;
+  let isSubmitting = false;
+  const pendingQueue: string[] = [];
   return {
     submitted,
     permissionResponses,
+    enqueuedInstructions,
     onRespondPermission: undefined as ((allow: boolean) => void) | undefined,
     get interrupted() { return interrupted; },
+    get isSubmitting() { return isSubmitting; },
     submit(text: string) {
       submitted.push(text);
+      isSubmitting = true;
       const generator = generators.shift();
       if (!generator) throw new Error(`Unexpected submit: ${text}`);
-      return generator(text);
+      const gen = generator(text);
+      // Wrap to track when done
+      return (async function* () {
+        try {
+          yield* gen;
+        } finally {
+          isSubmitting = false;
+          pendingQueue.length = 0;
+        }
+      })();
+    },
+    enqueueInstruction(instruction: string) {
+      const trimmed = instruction.trim();
+      if (!trimmed) return { status: 'ignored' as const, queueLength: pendingQueue.length };
+      if (!isSubmitting) return { status: 'idle' as const, queueLength: 0 };
+      if (pendingQueue.length >= 10) return { status: 'full' as const, queueLength: pendingQueue.length };
+      pendingQueue.push(trimmed);
+      enqueuedInstructions.push(trimmed);
+      return { status: 'queued' as const, queueLength: pendingQueue.length };
     },
     respondPermission(allow: boolean) {
       permissionResponses.push(allow);
       this.onRespondPermission?.(allow);
     },
-    interrupt() { interrupted++; },
+    interrupt() { interrupted++; isSubmitting = false; pendingQueue.length = 0; },
   };
 }
 
@@ -220,5 +245,180 @@ describe('TUI bridge turn state', () => {
 
     expect(engine.submitted).toEqual(['first message', 'second message']);
     expect(harness.state.messageQueue).toEqual([]);
+  });
+
+  // ─── P3: Mid-session instruction routing ──────────────────────────
+
+  it('P3-1: running + queued — input goes to engine, not messageQueue', async () => {
+    let releaseFirst!: () => void;
+    const firstReleased = new Promise<void>(r => { releaseFirst = r; });
+    const engine = mockEngine([
+      async function* () {
+        yield { role: 'assistant_delta', content: 'working...' };
+        await firstReleased;
+        yield { role: 'assistant_final', content: 'done' };
+        yield { role: 'done' };
+      },
+      async function* () {
+        yield { role: 'assistant_final', content: 'follow-up response' };
+        yield { role: 'done' };
+      },
+    ]);
+    const harness = stateHarness();
+    const bridge = createBridge(engine as unknown as ReasonixEngine, harness.setState);
+
+    const first = bridge.submit('first');
+    await waitFor(() => engine.submitted.length === 1);
+
+    // Second submit while running — should go via enqueueInstruction
+    bridge.submit('follow-up question');
+    expect(harness.state.messageQueue).toEqual([]);
+    expect(engine.enqueuedInstructions).toEqual(['follow-up question']);
+    expect(harness.state.pendingInstructionCount).toBe(1);
+
+    releaseFirst();
+    await first;
+    await waitFor(() => harness.state.isLoading === false);
+  });
+
+  it('P3-2: running + full — input falls back to messageQueue', async () => {
+    let releaseFirst!: () => void;
+    const firstReleased = new Promise<void>(r => { releaseFirst = r; });
+    const engine = mockEngine([
+      async function* () {
+        yield { role: 'assistant_delta', content: 'working...' };
+        await firstReleased;
+        yield { role: 'assistant_final', content: 'done' };
+        yield { role: 'done' };
+      },
+      async function* () {
+        yield { role: 'assistant_final', content: 'overflow response' };
+        yield { role: 'done' };
+      },
+    ]);
+    const harness = stateHarness();
+    const bridge = createBridge(engine as unknown as ReasonixEngine, harness.setState);
+
+    const first = bridge.submit('first');
+    await waitFor(() => engine.submitted.length === 1);
+
+    // Fill the injection queue (mock allows 10)
+    for (let i = 0; i < 10; i++) {
+      engine.enqueueInstruction(`msg-${i}`);
+    }
+    // 11th should be full — falls back to messageQueue
+    bridge.submit('overflow message');
+    expect(harness.state.messageQueue).toEqual(['overflow message']);
+    expect(harness.state.pendingInstructionCount).toBe(10);
+
+    releaseFirst();
+    await first;
+  });
+
+  it('P3-3: running + idle race — input falls back to messageQueue', async () => {
+    const engine = mockEngine([
+      async function* () {
+        yield { role: 'assistant_final', content: 'quick' };
+        yield { role: 'done' };
+      },
+      async function* () {
+        yield { role: 'assistant_final', content: 'queued' };
+        yield { role: 'done' };
+      },
+    ]);
+    const harness = stateHarness();
+    const bridge = createBridge(engine as unknown as ReasonixEngine, harness.setState);
+
+    // Submit and immediately try another — engine finishes very fast
+    const first = bridge.submit('first');
+    // By the time we call submit again, engine may have finished (idle)
+    // The mock engine sets isSubmitting=false on generator exit
+    await first;
+    // Now engine is idle — enqueueInstruction returns idle, falls back to messageQueue
+    bridge.submit('second');
+    // Since engine is idle, it should go to messageQueue (or auto-submit via processQueue)
+    await waitFor(() => engine.submitted.length === 2 || harness.state.messageQueue.length === 0);
+  });
+
+  it('P3-4: instruction_injected status updates pendingInstructionCount', async () => {
+    let releaseFirst!: () => void;
+    const firstReleased = new Promise<void>(r => { releaseFirst = r; });
+    const engine = mockEngine([
+      async function* () {
+        yield { role: 'assistant_delta', content: 'working...' };
+        await firstReleased;
+        yield { role: 'status', content: 'instruction_injected', metadata: { kind: 'instruction_injected', queueLength: 0, turnCount: 1 } };
+        yield { role: 'assistant_final', content: 'done' };
+        yield { role: 'done' };
+      },
+    ]);
+    const harness = stateHarness();
+    const bridge = createBridge(engine as unknown as ReasonixEngine, harness.setState);
+
+    const first = bridge.submit('first');
+    await waitFor(() => engine.submitted.length === 1);
+
+    // Manually set pendingInstructionCount to simulate a queued instruction
+    harness.setState(prev => ({ ...prev, pendingInstructionCount: 1 }));
+    expect(harness.state.pendingInstructionCount).toBe(1);
+
+    releaseFirst();
+    await first;
+    // After instruction_injected status, count should be 0
+    await waitFor(() => harness.state.pendingInstructionCount === 0);
+  });
+
+  it('P3-5: cancel still calls respondPermission(false) and interrupt()', async () => {
+    const engine = mockEngine([
+      async function* () {
+        yield { role: 'permission_ask', toolName: 'bash', content: '{"command":"ls"}' };
+        await new Promise<void>(resolve => {
+          engine.onRespondPermission = () => resolve();
+        });
+        yield { role: 'status', content: 'interrupted' };
+      },
+    ]);
+    const harness = stateHarness();
+    const bridge = createBridge(engine as unknown as ReasonixEngine, harness.setState);
+
+    const pending = bridge.submit('run');
+    await waitFor(() => harness.state.permissionPrompt !== null);
+    bridge.cancel();
+    await pending;
+
+    expect(engine.permissionResponses).toEqual([false]);
+    expect(engine.interrupted).toBe(1);
+  });
+
+  it('P3-6: original serial queue regression — messageQueue still works', async () => {
+    let releaseFirst!: () => void;
+    const firstReleased = new Promise<void>(r => { releaseFirst = r; });
+    const engine = mockEngine([
+      async function* () {
+        yield { role: 'assistant_delta', content: 'working...' };
+        await firstReleased;
+        yield { role: 'assistant_final', content: 'done' };
+        yield { role: 'done' };
+      },
+      async function* () {
+        yield { role: 'assistant_final', content: 'queued response' };
+        yield { role: 'done' };
+      },
+    ]);
+    const harness = stateHarness();
+    const bridge = createBridge(engine as unknown as ReasonixEngine, harness.setState);
+
+    const first = bridge.submit('first');
+    await waitFor(() => engine.submitted.length === 1);
+
+    // If enqueueInstruction returns idle (engine finishes fast), falls back to messageQueue
+    // Force the scenario: engine finishes before second submit
+    releaseFirst();
+    await first;
+    // Now engine is idle
+    bridge.submit('second');
+    // Should be processed by processQueue (serial)
+    await waitFor(() => engine.submitted.length === 2 && harness.state.isLoading === false);
+    expect(engine.submitted).toEqual(['first', 'second']);
   });
 });

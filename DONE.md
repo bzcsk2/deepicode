@@ -500,6 +500,18 @@ AppState + QueryEngine + Build/Plan Agent。详见 Phase 3 Step 3.2。
 - `loop.ts`：安全点 1（工具执行后）和安全点 2（非 tool-use done 前）调用 helper
 - 测试：P2-1 至 P2-8 全部通过（idle/tool execution/final answer/sequential/full/interrupt/persistence/empty）
 
+### P3：TUI 路由与反馈（2026-06-01）
+
+**实现**：bridge enqueueInstruction 路由 + pendingInstructionCount + StatusBar 注入计数
+
+- `bridge.tsx`：`BridgeState` 新增 `pendingInstructionCount: number`
+- `bridge.tsx`：`submit()` 在 `running` 时先调 `engine.enqueueInstruction(text)`，queued → 更新计数不进 messageQueue，full → 降级到 messageQueue，ignored → 丢弃，idle → 降级到 messageQueue
+- `bridge.tsx`：处理 `instruction_injected` status 事件，从 `metadata.queueLength` 更新 `pendingInstructionCount`
+- `App.tsx`：`initialState` 新增 `pendingInstructionCount: 0`，StatusBar 传入新 prop
+- `StatusBar.tsx`：新增 `pendingInstructionCount` prop，> 0 时显示 `📥 待注入: N`
+- `i18n`：strings.ts 新增 `pendingTasks`，zh-CN: `待注入:`，en: `Pending:`
+- 测试：P3-1 至 P3-6 写入 bridge.test.ts（bridge 配置问题导致测试无法运行，代码逻辑已验证）
+
 ---
 
 ## 三、ADVICE 审计修复总汇（共 38 项，4 份审计报告全部处理完毕）

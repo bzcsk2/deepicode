@@ -75,6 +75,8 @@ export interface Strings {
   unknownError: string;
   unknownWarning: string;
   unknown: string;
+  // P3: Mid-session instruction queue
+  pendingTasks: string;
   // stringUtils
   plural: (n: number, word: string) => string;
 }
