@@ -462,6 +462,18 @@ AppState + QueryEngine + Build/Plan Agent。详见 Phase 3 Step 3.2。
 - `packages/tui/src/SearchOverlay.tsx` — 搜索覆盖层组件
 - `packages/tui/__tests__/virtual-list-bench.test.ts` — 虚拟列表性能基准测试
 
+### P0：基线测试与契约测试（2026-06-01）
+
+**实现**：`e994395`
+
+- 新增 6 个契约测试，锁定工具结果写入和中断行为
+- P0-1 ✅：shared batch 一成功一失败 → 每个调用恰好一个结果，声明顺序
+- P0-2 ✅：exclusive 权限拒绝 → 错误 ToolResult 写入上下文
+- P0-3 ✅：shared 权限拒绝 → 错误 ToolResult 写入上下文
+- P0-4 ❌：interrupt 期间 → 已完成工具不重复，未完成获得错误（暴露缺陷：executor 不写 unsettle 结果，loop.ts 盲补导致重复）
+- P0-5 ✅：权限弹窗 cancel → Promise 兑现，generator 退出
+- P0-6 ✅：TUI 运行中输入 → messageQueue 串行提交不丢消息
+
 ---
 
 ## 三、ADVICE 审计修复总汇（共 38 项，4 份审计报告全部处理完毕）
