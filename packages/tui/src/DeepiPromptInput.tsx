@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Box, Text, useInput } from '@deepicode/ink';
+import { t } from './i18n/index.js';
 
 interface DeepiPromptInputProps {
   onSubmit: (text: string) => void;
@@ -233,10 +234,10 @@ export function DeepiPromptInput({ onSubmit, onChange, isLoading, disabled, queu
   });
 
   const isPlaceholder = !input && !isLoading;
-  const queueHint = queueCount > 0 ? ` (${queueCount} queued)` : '';
-  const loadingHint = isLoading ? ' (processing...)' : '';
+  const queueHint = queueCount > 0 ? t().queued(queueCount) : '';
+  const loadingHint = isLoading ? t().processing : '';
   const displayText = isPlaceholder && !isLoading && queueCount === 0
-    ? '输入消息...'
+    ? t().placeholder
     : `${input.slice(0, cursor)}▊${input.slice(cursor)}${queueHint}${loadingHint}`;
 
   return (

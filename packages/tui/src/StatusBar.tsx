@@ -1,4 +1,5 @@
 import { Box, Text } from '@deepicode/ink';
+import { t } from './i18n/index.js';
 
 interface StatusBarProps {
   model: string;
@@ -39,9 +40,9 @@ export function StatusBar({ model, provider, agent, inputTokens, outputTokens, c
         <Text inverse>{` ${model} `}</Text>
         <Text inverse>{` [${agent}] `}</Text>
         <Box flexGrow={1} />
-        <Text inverse>{` in${fmt(inputTokens)}`}</Text>
-        <Text inverse>{` hit${rate}`}</Text>
-        <Text inverse>{` out${fmt(outputTokens)} `}</Text>
+        <Text inverse>{` ${t().inputTokens}${fmt(inputTokens)}`}</Text>
+        <Text inverse>{` ${t().cacheHit}${rate}`}</Text>
+        <Text inverse>{` ${t().outputTokens}${fmt(outputTokens)} `}</Text>
         <Text inverse>{` ${fmt(contextUsed)}/${fmt(contextTotal)} `}</Text>
       </Box>
     </Box>

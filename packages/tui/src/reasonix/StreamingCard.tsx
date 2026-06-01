@@ -9,6 +9,7 @@ import { Spinner } from './Spinner.js';
 import { Markdown } from './markdown.js';
 import { clipToCells } from './text-width.js';
 import { FG, TONE } from './tokens.js';
+import { t } from '../i18n/index.js';
 
 const PREVIEW_LINES = 4;
 const EXPANDED_MAX_LINES = 60;
@@ -45,8 +46,8 @@ function wrapLines(text: string, width: number): string[] {
 
 function formatRate(tps: number | null): string {
   if (tps === null) return '';
-  if (tps >= 1000) return `${(tps / 1000).toFixed(1)}k t/s`;
-  return `${tps} t/s`;
+  if (tps >= 1000) return t().tps(`${(tps / 1000).toFixed(1)}k`);
+  return t().tps(`${tps}`);
 }
 
 export function StreamingCard({ text, done = false, aborted = false, startTs, expanded = false }: StreamingCardProps): React.ReactElement {
@@ -67,7 +68,7 @@ export function StreamingCard({ text, done = false, aborted = false, startTs, ex
 
   const headColor = aborted ? TONE.err : TONE.brand;
   const glyph = aborted ? '\u2298' : '\u25CF';
-  const headLabel = aborted ? 'aborted' : 'writing';
+  const headLabel = aborted ? t().aborted : t().writing;
 
   if (done && !aborted) {
     return (
@@ -75,7 +76,7 @@ export function StreamingCard({ text, done = false, aborted = false, startTs, ex
         <CardHeader
           glyph={'\u2039'}
           tone={TONE.ok}
-          title="Reply"
+          title={t().reply}
           right={tps !== null ? <Text dimColor>{formatRate(tps)}</Text> : undefined}
         />
         <Markdown text={text} />
@@ -101,7 +102,7 @@ export function StreamingCard({ text, done = false, aborted = false, startTs, ex
         }
       />
       {droppedAbove > 0 && (
-        <Text color={FG.faint}>{`... +${droppedAbove} lines`}</Text>
+        <Text color={FG.faint}>{t().linesDropped(droppedAbove)}</Text>
       )}
       {visible.map((line, i) => (
         <Box key={i} flexDirection="row">
@@ -114,7 +115,7 @@ export function StreamingCard({ text, done = false, aborted = false, startTs, ex
           <Text color={TONE.ok}>{'\u258A'}</Text>
         </Box>
       )}
-      {aborted && <Text color={FG.faint}>truncated by Esc</Text>}
+      {aborted && <Text color={FG.faint}>{t().truncatedByEsc}</Text>}
     </Card>
   );
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Box, Text, useInput } from '@deepicode/ink';
 import { SessionLoader, type SessionSummary } from '@deepicode/core';
+import { t } from './i18n/index.js';
 
 interface SessionPickerProps {
   onSelect: (sessionId: string) => void;
@@ -62,15 +63,15 @@ export function SessionPicker({ onSelect, onCancel }: SessionPickerProps) {
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1} borderStyle="round" width="100%">
       <Box marginBottom={1}>
-        <Text bold>Sessions</Text>
-        <Text dimColor> (↑↓ select, Enter resume, Esc cancel)</Text>
+        <Text bold>{t().sessions}</Text>
+        <Text dimColor>{t().sessionHint}</Text>
       </Box>
 
-      {loading && <Text dimColor>Loading...</Text>}
-      {error && <Text color="error">Error: {error}</Text>}
+      {loading && <Text dimColor>{t().loading}</Text>}
+      {error && <Text color="error">{t().error}{error}</Text>}
 
       {!loading && !error && sessions.length === 0 && (
-        <Text dimColor>No saved sessions found.</Text>
+        <Text dimColor>{t().noSessions}</Text>
       )}
 
       {sessions.map((s, i) => (
@@ -78,7 +79,7 @@ export function SessionPicker({ onSelect, onCancel }: SessionPickerProps) {
           <Text>{i === selIdx ? '❯ ' : '  '}</Text>
           <Text bold={i === selIdx}>{s.id.slice(0, 8)}</Text>
           <Text> — {fmtTime(s.ts)}</Text>
-          <Text dimColor> {s.userMessages} msgs</Text>
+          <Text dimColor>{t().msgs(s.userMessages)}</Text>
           <Text dimColor> in{fmtTokens(s.inputTokens)} out{fmtTokens(s.outputTokens)}</Text>
         </Box>
       ))}

@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { Box, Text, useInput } from '@deepicode/ink';
 import { PROVIDERS, getApiKeyEnvVar } from '@deepicode/core';
 import { execFile } from 'child_process';
+import { t } from './i18n/index.js';
 
 interface ModelPickerProps {
   currentProvider: string;
@@ -162,12 +163,12 @@ export function ModelPicker({ currentProvider, currentModel, onSelect, onCancel 
   return (
     <Box flexDirection="column" paddingX={1} paddingY={1} borderStyle="round" width="100%">
       <Box marginBottom={1}>
-        <Text bold>Model Settings</Text>
+        <Text bold>{t().modelSettings}</Text>
       </Box>
 
       {step === 'provider' && (
         <Box flexDirection="column">
-          <Text dimColor>Select provider (↑↓ Enter, Ctrl+C to cancel):</Text>
+          <Text dimColor>{t().selectProvider}</Text>
           {PROVIDER_ORDER.map((p, i) => {
             const info = PROVIDERS[p];
             if (!info) return null;
@@ -175,7 +176,7 @@ export function ModelPicker({ currentProvider, currentModel, onSelect, onCancel 
               <Box key={p}>
                 <Text>{i === selIdx ? '❯ ' : '  '}</Text>
                 <Text bold={i === selIdx}>{info.label}</Text>
-                {p === currentProvider && <Text dimColor> (current)</Text>}
+                {p === currentProvider && <Text dimColor>{t().current}</Text>}
               </Box>
             );
           })}
@@ -184,23 +185,23 @@ export function ModelPicker({ currentProvider, currentModel, onSelect, onCancel 
 
       {step === 'key' && (
         <Box flexDirection="column">
-          <Text dimColor>Enter API key for {providerName}:</Text>
+          <Text dimColor>{t().enterApiKey(providerName)}</Text>
           <Text>  {inputBuf}{inputBuf.length > 0 ? '▊' : ''}</Text>
-          <Text dimColor>  Esc to go back</Text>
+          <Text dimColor>{t().escToGoBack}</Text>
         </Box>
       )}
 
       {step === 'model' && (
         <Box flexDirection="column">
-          <Text dimColor>{providerName} — select model (↑↓ Enter):</Text>
+          <Text dimColor>{t().selectModel(providerName)}</Text>
           {models.map((m, i) => (
             <Box key={m.model}>
               <Text>{i === selIdx ? '❯ ' : '  '}</Text>
               <Text bold={i === selIdx}>{m.label}</Text>
-              {m.model === currentModel && <Text dimColor> (current)</Text>}
+              {m.model === currentModel && <Text dimColor>{t().current}</Text>}
             </Box>
           ))}
-          <Text dimColor>  Esc to go back</Text>
+          <Text dimColor>{t().escToGoBack}</Text>
         </Box>
       )}
     </Box>

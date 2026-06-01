@@ -2,6 +2,7 @@ import { Box, Text, useInput } from '@deepicode/ink';
 import React, { useState, useMemo } from 'react';
 import { filterCommands, type SlashCommand } from './CommandRegistry.js';
 import { TONE, FG } from './reasonix/tokens.js';
+import { t } from './i18n/index.js';
 
 interface CommandAutocompleteProps {
   query: string;
@@ -45,7 +46,7 @@ export function CommandAutocomplete({ query, onSelect, onClose }: CommandAutocom
         </Box>
       ))}
       <Box marginTop={1}>
-        <Text dimColor>↑↓ select · Enter/Tab complete · Esc close</Text>
+        <Text dimColor>{t().cmdAutocompleteHint}</Text>
       </Box>
     </Box>
   );

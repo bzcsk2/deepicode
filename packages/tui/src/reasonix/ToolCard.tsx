@@ -8,6 +8,7 @@ import { CardHeader, type MetaItem } from './CardHeader.js';
 import { Spinner } from './Spinner.js';
 import { clipToCells } from './text-width.js';
 import { FG, TONE } from './tokens.js';
+import { t } from '../i18n/index.js';
 
 const READ_TAIL = 2;
 const OTHER_TAIL = 5;
@@ -81,10 +82,10 @@ export function ToolCard({ card, isInflight = false }: { card: ToolCardData; isI
   const showBody = !card.rejected && preview.length > 0;
 
   const meta: MetaItem[] = [];
-  if (card.rejected) meta.push({ text: 'rejected', color: TONE.err });
+  if (card.rejected) meta.push({ text: t().rejected, color: TONE.err });
   if (card.elapsedMs && card.elapsedMs > 0) meta.push(`${(card.elapsedMs / 1000).toFixed(2)}s`);
   if (card.done && !card.rejected && !card.aborted && card.exitCode !== undefined && card.exitCode !== 0) {
-    meta.push({ text: `exit ${card.exitCode}`, color: TONE.err });
+    meta.push({ text: t().exitCode(card.exitCode), color: TONE.err });
   }
 
   return (

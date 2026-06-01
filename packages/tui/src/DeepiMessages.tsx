@@ -9,6 +9,7 @@ import { Spinner } from './reasonix/Spinner.js';
 import { StreamingCard } from './reasonix/StreamingCard.js';
 import { ToolCard, type ToolCardData } from './reasonix/ToolCard.js';
 import { FG, SURFACE, TONE } from './reasonix/tokens.js';
+import { t } from './i18n/index.js';
 
 interface DeepiMessagesProps {
   timeline: TimelineItem[];
@@ -55,8 +56,8 @@ function ReasoningCard({ text, isOpen }: { text: string; isOpen: boolean }) {
       <CardHeader
         glyph={isOpen ? '\u25BC' : '\u25B6'}
         tone={TONE.accent}
-        title="Thinking"
-        right={!isOpen ? <Text dimColor>ctrl+o</Text> : undefined}
+        title={t().thinking}
+        right={!isOpen ? <Text dimColor>{t().ctrlO}</Text> : undefined}
       />
       {isOpen && (
         <Box marginTop={1} paddingLeft={2}>
@@ -74,9 +75,9 @@ function ToolUseSection({ tools, isOpen }: { tools: ToolStatus[]; isOpen: boolea
       <CardHeader
         glyph={isOpen ? '\u25BC' : '\u25B6'}
         tone={TONE.brand}
-        title="Tool use"
+        title={t().toolUse}
         meta={[`${tools.length}`]}
-        right={!isOpen ? <Text dimColor>ctrl+o</Text> : undefined}
+        right={!isOpen ? <Text dimColor>{t().ctrlO}</Text> : undefined}
       />
       {isOpen && (
         <Box flexDirection="column" paddingLeft={2}>
@@ -103,7 +104,7 @@ function PlainMessage({ message }: { message: ChatMessage }) {
     return (
       <Card>
         <Box flexDirection="column" backgroundColor={SURFACE.bgElev} paddingX={1} paddingY={1}>
-          <CardHeader glyph="\u25C7" tone={TONE.brand} title="You" />
+          <CardHeader glyph="\u25C7" tone={TONE.brand} title={t().you} />
           <Box paddingLeft={1}><MessageContent text={message.content ?? ''} /></Box>
         </Box>
       </Card>
@@ -113,7 +114,7 @@ function PlainMessage({ message }: { message: ChatMessage }) {
     return (
       <Card>
         <Box flexDirection="column" paddingX={1} paddingY={1}>
-          <CardHeader glyph="\u25CF" tone={TONE.ok} title="Assistant" />
+          <CardHeader glyph="\u25CF" tone={TONE.ok} title={t().assistant} />
           <Box paddingLeft={1}><MessageContent text={message.content ?? ''} /></Box>
         </Box>
       </Card>
@@ -135,7 +136,7 @@ function Turn({ turn, detailsOpen }: { turn: TurnView; detailsOpen: boolean }) {
           : (
             <Card>
               <Box flexDirection="column" paddingX={1} paddingY={1}>
-                <CardHeader glyph={'\u2039'} tone={TONE.ok} title="Reply" />
+                <CardHeader glyph={'\u2039'} tone={TONE.ok} title={t().reply} />
                 <Box paddingLeft={1}>
                   <MessageContent text={turn.assistantText} />
                 </Box>
@@ -146,7 +147,7 @@ function Turn({ turn, detailsOpen }: { turn: TurnView; detailsOpen: boolean }) {
       {turn.isLoading && turn.streamingText === null && !turn.reasoningText && turn.tools.length === 0 && (
         <Box>
           <Spinner kind="braille" color={TONE.brand} bold />
-          <Text color={FG.sub}> thinking...</Text>
+          <Text color={FG.sub}>{t().thinkingDots}</Text>
         </Box>
       )}
     </Box>

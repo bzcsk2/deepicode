@@ -1,5 +1,6 @@
 import type { ChatMessage, ReasonixEngine } from '@deepicode/core';
 import { setTUIState } from './App.js';
+import { t } from './i18n/index.js';
 
 export interface ToolStatus {
   key: string;
@@ -222,20 +223,20 @@ export function createBridge(
               updateTurn(turnId, turn => {
                 const existing = turn.tools.find(tool => tool.key === key);
                 const failed: ToolStatus = existing
-                  ? { ...existing, status: 'error', output: event.content ?? 'Unknown error', elapsedMs: Date.now() - existing.startedAt }
+                  ? { ...existing, status: 'error', output: event.content ?? t().unknownError, elapsedMs: Date.now() - existing.startedAt }
                   : {
                       key,
-                      name: event.toolName ?? 'tool',
+                      name: event.toolName ?? t().unknown,
                       status: 'error',
                       args: {},
-                      output: event.content ?? 'Unknown error',
+                      output: event.content ?? t().unknownError,
                       startedAt: Date.now(),
                       elapsedMs: 0,
                     };
                 return { ...turn, tools: [...turn.tools.filter(tool => tool.key !== key), failed] };
               });
             } else {
-              setState(prev => ({ ...prev, error: event.content ?? 'Unknown error' }));
+              setState(prev => ({ ...prev, error: event.content ?? t().unknownError }));
             }
             break;
 
@@ -258,7 +259,7 @@ export function createBridge(
           }
 
           case 'warning':
-            setState(prev => ({ ...prev, warnings: [...prev.warnings, event.content ?? 'Unknown warning'] }));
+            setState(prev => ({ ...prev, warnings: [...prev.warnings, event.content ?? t().unknownWarning] }));
             break;
 
           case 'status':

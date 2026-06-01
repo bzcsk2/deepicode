@@ -14,6 +14,7 @@ import { ModelPicker } from './ModelPicker.js';
 import { SessionPicker } from './SessionPicker.js';
 import { PermissionPrompt } from './PermissionPrompt.js';
 import { CommandAutocomplete } from './CommandAutocomplete.js';
+import { t, setLocale, toggleLocale, getLocale } from './i18n/index.js';
 
 // ---- Module-level interrupt state (shared by SIGINT handler + useInput \x03 handler) ----
 
@@ -74,7 +75,7 @@ function doInterrupt(): void {
   }
 
   exitTimer = setTimeout(() => { exitTimer = null; _setStatusMsg?.(null); }, 2000);
-  _setStatusMsg?.('Press Ctrl+C again to exit');
+  _setStatusMsg?.(t().pressCtrlC);
 }
 
 const initialState: BridgeState = {
@@ -160,15 +161,16 @@ export function App({ engine, config }: AppProps) {
     if (text === '/exit' || text === '/bye') {
       exitPending = true;
       engineRef.current.interrupt();
-      appendMessage({ role: 'assistant' as const, content: 'Shutting down...' });
+      appendMessage({ role: 'assistant' as const, content: t().shuttingDown });
       cleanupTerminal();
       process.exit(0);
     }
     if (text === '/help') {
       const agentList = Object.values(AGENTS).map(a => `${a.name} — ${a.label}`).join('\n');
+      const s = t();
       appendMessage({
         role: 'assistant' as const,
-        content: `Commands:\n  /exit, /bye  — exit\n  /help        — show this\n  /model       — switch provider/model\n  /sessions    — browse & resume past sessions\n  /agent       — switch agent\n  /skill       — list loaded skills\n\nAgents:\n${agentList}\n\nCurrent: ${AGENTS[activeAgent]?.label ?? activeAgent}`,
+        content: `Commands:\n  /exit, /bye  — ${s.cmdExit}\n  /help        — ${s.cmdHelp}\n  /model       — ${s.cmdModel}\n  /sessions    — ${s.cmdSessions}\n  /agent       — ${s.cmdAgent}\n  /skill       — ${s.cmdSkill}\n  /lang        — ${s.cmdLang}\n\nAgents:\n${agentList}\n\nCurrent: ${AGENTS[activeAgent]?.label ?? activeAgent}`,
       });
       return;
     }
@@ -185,11 +187,11 @@ export function App({ engine, config }: AppProps) {
         const tool = createSkillTool()
         const result = await tool.execute({ command: "list" }, { cwd: process.cwd(), sessionId: "" })
         let msg: string
-        try { const d = JSON.parse(result.content); msg = `Loaded ${d.count} skills.\n${d.skills.slice(0, 20).map((s: any) => `  ${s.name} — ${s.description}`).join("\n")}${d.count > 20 ? `\n  ... and ${d.count - 20} more` : ""}` } catch { msg = result.content }
+        try { const d = JSON.parse(result.content); msg = `${t().loadedSkills(d.count)}${d.skills.slice(0, 20).map((s: any) => `  ${s.name} — ${s.description}`).join("\n")}${d.count > 20 ? `\n  ... and ${d.count - 20} more` : ""}` } catch { msg = result.content }
         appendMessage({ role: 'assistant' as const, content: msg })
       }).catch(e => {
         const msg = e instanceof Error ? e.message : String(e)
-        appendMessage({ role: 'assistant' as const, content: `Failed to load skills: ${msg}` })
+        appendMessage({ role: 'assistant' as const, content: t().failedLoadSkills(msg) })
       })
       return
     }
@@ -197,7 +199,13 @@ export function App({ engine, config }: AppProps) {
       const next = activeAgent === 'build' ? 'plan' : 'build';
       const label = engineRef.current.switchAgent(next);
       setActiveAgent(next);
-      appendMessage({ role: 'assistant' as const, content: `Switched to ${label}` });
+      appendMessage({ role: 'assistant' as const, content: t().switchedTo(label) });
+      return;
+    }
+    if (text === '/lang') {
+      const next = toggleLocale();
+      setLocale(next);
+      appendMessage({ role: 'assistant' as const, content: t().switchedLang(next) });
       return;
     }
     bridge.submit(text);
@@ -214,7 +222,7 @@ export function App({ engine, config }: AppProps) {
     setActiveModel(sel.model);
     saveLastConfig({ provider: sel.provider, model: sel.model, baseUrl: sel.baseUrl });
     setShowModelPicker(false);
-    appendMessage({ role: 'assistant' as const, content: `Switched to ${PROVIDERS[sel.provider]?.label ?? sel.provider} / ${sel.model}` });
+    appendMessage({ role: 'assistant' as const, content: t().switchedModel(PROVIDERS[sel.provider]?.label ?? sel.provider, sel.model) });
   }, [appendMessage]);
 
   const handleModelCancel = useCallback(() => {
@@ -232,7 +240,7 @@ export function App({ engine, config }: AppProps) {
       ...initialState,
       timeline: timelineFromMessages(msgs),
     });
-    appendMessage({ role: 'assistant' as const, content: `Resumed session ${sessionId.slice(0, 8)}... (${msgs.length} messages)` });
+    appendMessage({ role: 'assistant' as const, content: t().resumedSession(sessionId.slice(0, 8), msgs.length) });
   }, [appendMessage]);
 
   const handleSessionCancel = useCallback(() => {

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Box, Text, useInput } from '@deepicode/ink';
+import { t } from './i18n/index.js';
 
 interface PermissionPromptProps {
   toolName: string;
@@ -7,11 +8,13 @@ interface PermissionPromptProps {
   onSelect: (allow: boolean, alwaysAllow?: boolean) => void;
 }
 
-const OPTIONS = [
-  { label: '允许', value: 'allow' as const },
-  { label: '始终允许', value: 'always' as const },
-  { label: '拒绝', value: 'deny' as const },
-];
+function getOptions() {
+  return [
+    { label: t().allow, value: 'allow' as const },
+    { label: t().alwaysAllow, value: 'always' as const },
+    { label: t().deny, value: 'deny' as const },
+  ];
+}
 
 function formatArgs(toolName: string, args: Record<string, unknown>): string {
   const name = toolName.toLowerCase();
@@ -23,22 +26,23 @@ function formatArgs(toolName: string, args: Record<string, unknown>): string {
   if (args.command) return String(args.command);
   const keys = Object.keys(args);
   if (keys.length <= 2) return keys.map(k => `${k}=${JSON.stringify(args[k])}`).join(' ');
-  return `${keys.length} parameters`;
+  return t().parameters(keys.length);
 }
 
 export function PermissionPrompt({ toolName, args, onSelect }: PermissionPromptProps) {
   const [selected, setSelected] = useState(0);
   const alive = useRef(true);
+  const options = getOptions();
 
   useEffect(() => { return () => { alive.current = false; }; }, []);
 
   useInput((_input, key) => {
     if (key.upArrow) {
-      setSelected(prev => (prev - 1 + OPTIONS.length) % OPTIONS.length);
+      setSelected(prev => (prev - 1 + options.length) % options.length);
     } else if (key.downArrow) {
-      setSelected(prev => (prev + 1) % OPTIONS.length);
+      setSelected(prev => (prev + 1) % options.length);
     } else if (key.return) {
-      const opt = OPTIONS[selected];
+      const opt = options[selected];
       if (!alive.current) return;
       if (opt.value === 'allow') onSelect(true);
       else if (opt.value === 'always') onSelect(true, true);
@@ -53,18 +57,18 @@ export function PermissionPrompt({ toolName, args, onSelect }: PermissionPromptP
   return (
     <Box flexDirection="column" width="100%" borderStyle="round" borderColor="warning" paddingX={1} paddingY={1} marginBottom={1}>
       <Box marginBottom={1}>
-        <Text bold color="warning">🔐 权限确认</Text>
+        <Text bold color="warning">{`🔐 ${t().permissionTitle}`}</Text>
       </Box>
       <Box marginBottom={1}>
         <Text>
           <Text bold>{toolName}</Text>
-          <Text> 请求执行：</Text>
+          <Text>{t().requestsToExecute}</Text>
         </Text>
       </Box>
       <Box paddingLeft={1} marginBottom={1}>
         <Text color="warning">$ {cmd}</Text>
       </Box>
-      {OPTIONS.map((opt, i) => (
+      {options.map((opt, i) => (
         <Box key={opt.value} paddingLeft={1}>
           <Text color={i === selected ? 'warning' : undefined}>
             {i === selected ? '▸ ' : '  '}
@@ -75,7 +79,7 @@ export function PermissionPrompt({ toolName, args, onSelect }: PermissionPromptP
         </Box>
       ))}
       <Box marginTop={1} paddingLeft={1}>
-        <Text dimColor>↑↓ 选择 · Enter 确认 · Esc 拒绝</Text>
+        <Text dimColor>{t().permissionHint}</Text>
       </Box>
     </Box>
   );
