@@ -11,6 +11,9 @@ import { runLoop } from "./loop.js"
 import type { LoopOptions } from "./loop.js"
 import { PermissionEngine, HookManager } from "@deepicode/security"
 import { getAgent, agentConfigFor } from "./agent.js"
+import { createModeSelectorState } from "./mode-selector.js"
+import type { ModeSelectorState } from "./mode-selector.js"
+import type { ThinkingMode } from "./provider-thinking.js"
 
 /**
  * ReasonixEngine 是 Deepicode 的核心引擎，负责：
@@ -62,6 +65,14 @@ export class ReasonixEngine implements CoreEngine {
 
   /** exec 工具权限确认：pending Promise 由 TUI 响应 resolve */
   private pendingPermission: { resolve: (v: boolean) => void; toolName: string; args: Record<string, unknown> } | null = null
+
+  /** AS3: Thinking mode selector state */
+  private modeSelectorState: ModeSelectorState = createModeSelectorState()
+
+  /** AS3: Set thinking mode for auto-switch */
+  setThinkingMode(mode: ThinkingMode): void {
+    this.modeSelectorState.currentMode = mode
+  }
 
   /** P2: Mid-session instruction queue — consumed by loop at safe points */
   private pendingInstructionQueue: string[] = []
@@ -278,6 +289,8 @@ export class ReasonixEngine implements CoreEngine {
           if (!content) return null
           return { content, remaining: this.pendingInstructionQueue.length }
         },
+        thinkingMode: this.modeSelectorState.currentMode,
+        modeSelectorState: this.modeSelectorState,
       }
 
       for await (const event of runLoop(loopOpts)) {

@@ -6,6 +6,10 @@ import type { ContextManager } from "./context/manager.js"
 import type { StreamingToolExecutor } from "./streaming-executor.js"
 import type { AsyncSessionWriter } from "./session.js"
 import type { FoldDecision } from "./context/token-estimator.js"
+import type { ModeSelectorState, SwitchSignal } from "./mode-selector.js"
+import type { ThinkingMode } from "./provider-thinking.js"
+import { evaluateModeSwitch } from "./mode-selector.js"
+import { createDeepSeekCapabilities } from "./provider-thinking.js"
 import { calculateCost } from "./pricing.js"
 import { randomUUID } from "node:crypto"
 
@@ -41,12 +45,14 @@ export interface LoopOptions {
   appendToolResult: (tc: ToolCall, result: ToolResult) => void
   takePendingInstruction?: () => PendingInstruction | null
   maxTurns?: number
+  thinkingMode?: ThinkingMode
+  modeSelectorState?: ModeSelectorState
 }
 
 const DEFAULT_MAX_TURNS = 100
 
 export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
-  const { ctx, client, toolExecutor, toolSpecs, config, signal, sessionWriter, stats, isInterrupted, appendToolResult, takePendingInstruction, maxTurns = DEFAULT_MAX_TURNS } = opts
+  const { ctx, client, toolExecutor, toolSpecs, config, signal, sessionWriter, stats, isInterrupted, appendToolResult, takePendingInstruction, maxTurns = DEFAULT_MAX_TURNS, thinkingMode = "off", modeSelectorState } = opts
 
   // P2: Safe-point helper — consume one pending instruction from the queue.
   // Returns a status event if an instruction was injected, null otherwise.
@@ -85,6 +91,8 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
   let turnCount = 0
   let consecutiveErrors = 0
   const recentToolCalls = new Map<string, number>()
+  let currentMode: ThinkingMode = thinkingMode
+  let totalToolCalls = 0
 
   while (turnCount < maxTurns) {
     turnCount++
@@ -108,6 +116,7 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
       temperature: config.temperature,
       signal,
       tools: toolSpecs.length > 0 ? toolSpecs : undefined,
+      ...createDeepSeekCapabilities().mapMode(currentMode),
     })) {
       if (isInterrupted()) {
         yield { role: "status", content: "interrupted" }
@@ -175,6 +184,7 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
             finishedWithToolUse = true
             ctx.log.append({ role: "assistant", content: fullContent || null, reasoning_content: fullReasoning || undefined, tool_calls: toolCalls })
             sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: ctx.buildMessages() })
+            totalToolCalls += toolCalls.length
 
             try {
               for await (const toolEvent of toolExecutor.run(toolCalls, signal, appendToolResult)) {
@@ -211,6 +221,24 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
             yield { role: "done", metadata: { reason } as Record<string, unknown> }
             sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: ctx.buildMessages() })
             sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: { role: "done", metadata: { reason } } })
+
+            // AS3: Evaluate thinking mode switch before returning
+            if (modeSelectorState && !signal.aborted) {
+              const signalBundle: SwitchSignal = {
+                currentMode,
+                toolCallCount: totalToolCalls,
+                textLength: fullContent.length,
+                loopCount: turnCount,
+                retryCount: consecutiveErrors,
+                hasError: !!streamError,
+              }
+              const decision = evaluateModeSwitch(modeSelectorState, signalBundle)
+              if (decision.action === "switch") {
+                currentMode = decision.target
+                modeSelectorState.lastSwitchTime = Date.now()
+                yield { role: "status", content: "thinking_mode_switch", metadata: { from: signalBundle.currentMode, to: currentMode, reason: decision.reason } }
+              }
+            }
             return
           }
           break
@@ -221,6 +249,24 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
           yield streamError
           sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: streamError })
           break
+      }
+    }
+
+    // AS3: Evaluate thinking mode switch after each turn
+    if (modeSelectorState && !signal.aborted) {
+      const signalBundle: SwitchSignal = {
+        currentMode,
+        toolCallCount: totalToolCalls,
+        textLength: fullContent.length,
+        loopCount: turnCount,
+        retryCount: consecutiveErrors,
+        hasError: !!streamError,
+      }
+      const decision = evaluateModeSwitch(modeSelectorState, signalBundle)
+      if (decision.action === "switch") {
+        currentMode = decision.target
+        modeSelectorState.lastSwitchTime = Date.now()
+        yield { role: "status", content: "thinking_mode_switch", metadata: { from: signalBundle.currentMode, to: currentMode, reason: decision.reason } }
       }
     }
 
