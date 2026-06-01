@@ -158,4 +158,67 @@ describe('TUI bridge turn state', () => {
     expect(harness.state.isLoading).toBe(false);
     expect(harness.state.permissionPrompt).toBeNull();
   });
+
+  // ─── P0 Contract Tests (bridge) ──────────────────────────────────
+
+  it('P0-5: permission prompt cancel — promise is fulfilled, generator can exit', async () => {
+    const engine = mockEngine([
+      async function* () {
+        yield { role: 'permission_ask', toolName: 'bash', content: '{"command":"rm -rf /"}' };
+        await new Promise<void>(resolve => {
+          engine.onRespondPermission = () => resolve();
+        });
+        yield { role: 'status', content: 'interrupted' };
+      },
+    ]);
+    const harness = stateHarness();
+    const bridge = createBridge(engine as unknown as ReasonixEngine, harness.setState);
+
+    const pending = bridge.submit('dangerous command');
+    await waitFor(() => harness.state.permissionPrompt !== null);
+    // User cancels during permission prompt
+    bridge.cancel();
+    await pending;
+
+    // Permission promise was resolved with false
+    expect(engine.permissionResponses).toEqual([false]);
+    // Generator exited cleanly
+    expect(harness.state.isLoading).toBe(false);
+  });
+
+  it('P0-6: TUI running input goes to messageQueue, serial submit not lost', async () => {
+    let releaseFirst!: () => void;
+    const firstReleased = new Promise<void>(r => { releaseFirst = r; });
+    const engine = mockEngine([
+      async function* () {
+        yield { role: 'assistant_delta', content: 'working...' };
+        await firstReleased;
+        yield { role: 'assistant_final', content: 'done' };
+        yield { role: 'done' };
+      },
+      async function* () {
+        yield { role: 'assistant_final', content: 'second response' };
+        yield { role: 'done' };
+      },
+    ]);
+    const harness = stateHarness();
+    const bridge = createBridge(engine as unknown as ReasonixEngine, harness.setState);
+
+    // First submit is running
+    const first = bridge.submit('first message');
+    await waitFor(() => engine.submitted.length === 1);
+
+    // Second submit arrives while first is running — goes to messageQueue
+    bridge.submit('second message');
+    expect(harness.state.messageQueue).toEqual(['second message']);
+    expect(engine.submitted).toEqual(['first message']);
+
+    // Release first, second should auto-submit
+    releaseFirst();
+    await first;
+    await waitFor(() => engine.submitted.length === 2 && harness.state.isLoading === false);
+
+    expect(engine.submitted).toEqual(['first message', 'second message']);
+    expect(harness.state.messageQueue).toEqual([]);
+  });
 });

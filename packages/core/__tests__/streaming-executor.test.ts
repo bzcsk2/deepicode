@@ -380,4 +380,123 @@ describe("StreamingToolExecutor", () => {
     for await (const event of executor.run([{ id: "1", type: "function", function: { name: "Workflow", arguments: "{}" } }], new AbortController().signal, () => {})) events.push(event)
     expect(events.find(event => event.role === "tool")?.content).toBe("ran")
   })
+
+  // ─── P0 Contract Tests ────────────────────────────────────────────
+  // These tests lock down the contracts from Deepicode-Full-Implementation-Plan.md §4.3.
+  // P0-3 and P0-4 are EXPECTED TO FAIL — they expose defects that P1 will fix.
+
+  it("P0-1: shared batch one success one failure — each call gets exactly one result, in declaration order", async () => {
+    const { StreamingToolExecutor } = await import("../src/streaming-executor.js")
+    const good = makeHandler("good", { result: "ok" })
+    const bad = makeHandler("bad", { throwOn: "boom" })
+    const tools = new Map<string, AgentTool>([["good", good], ["bad", bad]])
+    const executor = new StreamingToolExecutor(tools, "test-session", process.cwd())
+    const toolCalls = [
+      { id: "1", type: "function" as const, function: { name: "good", arguments: "{}" } },
+      { id: "2", type: "function" as const, function: { name: "bad", arguments: '{"trigger":"boom"}' } },
+    ]
+    const results: Array<{ tc: unknown; result: ToolResult }> = []
+    const events: LoopEvent[] = []
+    for await (const e of executor.run(toolCalls, new AbortController().signal, (tc, r) => results.push({ tc, result: r }))) {
+      events.push(e)
+    }
+    // Each tool call gets exactly one result
+    expect(results).toHaveLength(2)
+    // Results are in declaration order (good=success, bad=error)
+    expect(results[0].result.isError).toBe(false)
+    expect(results[1].result.isError).toBe(true)
+    // Tool events are also in declaration order
+    const toolEvents = events.filter(e => e.role === "tool" || e.role === "error")
+    expect(toolEvents[0].toolName).toBe("good")
+    expect(toolEvents[1].toolName).toBe("bad")
+  })
+
+  it("P0-2: exclusive tool permission denied — context receives one error ToolResult", async () => {
+    const { StreamingToolExecutor } = await import("../src/streaming-executor.js")
+    const denyEngine: PermissionEngine = {
+      decide: () => ({ decision: "deny" as const, reason: "blocked by policy" }),
+      addRule: () => {},
+    }
+    const tools = new Map<string, AgentTool>([["ex", makeHandler("ex", { concurrency: "exclusive" })]])
+    const executor = new StreamingToolExecutor(tools, "test-session", process.cwd(), denyEngine)
+    const toolCalls = [
+      { id: "1", type: "function" as const, function: { name: "ex", arguments: "{}" } },
+    ]
+    const results: Array<{ tc: unknown; result: ToolResult }> = []
+    const events: LoopEvent[] = []
+    for await (const e of executor.run(toolCalls, new AbortController().signal, (tc, r) => results.push({ tc, result: r }))) {
+      events.push(e)
+    }
+    // Denied exclusive tool gets exactly one error result in context
+    expect(results).toHaveLength(1)
+    expect(results[0].result.isError).toBe(true)
+    expect(results[0].result.content).toContain("blocked by policy")
+  })
+
+  it("P0-3: shared tool permission denied — context receives one error ToolResult (DEFECT: currently no result written)", async () => {
+    const { StreamingToolExecutor } = await import("../src/streaming-executor.js")
+    const denyEngine: PermissionEngine = {
+      decide: () => ({ decision: "deny" as const, reason: "blocked shared" }),
+      addRule: () => {},
+    }
+    const tools = new Map<string, AgentTool>([["sh", makeHandler("sh")]])
+    const executor = new StreamingToolExecutor(tools, "test-session", process.cwd(), denyEngine)
+    const toolCalls = [
+      { id: "1", type: "function" as const, function: { name: "sh", arguments: "{}" } },
+    ]
+    const results: Array<{ tc: unknown; result: ToolResult }> = []
+    const events: LoopEvent[] = []
+    for await (const e of executor.run(toolCalls, new AbortController().signal, (tc, r) => results.push({ tc, result: r }))) {
+      events.push(e)
+    }
+    // CONTRACT: denied shared tool MUST write an error result to context
+    // DEFECT: current implementation only yields error event, never calls appendToolResult
+    expect(results).toHaveLength(1)
+    expect(results[0].result.isError).toBe(true)
+  })
+
+  it("P0-4: interrupt during tool execution — completed tools not duplicated, incomplete tools get error result (DEFECT: blind catch writes duplicates)", async () => {
+    const { StreamingToolExecutor } = await import("../src/streaming-executor.js")
+    let resolveFast!: () => void
+    const fastDone = new Promise<void>(r => { resolveFast = r })
+    const fast = makeHandler("fast", { result: "done" })
+    // Slow tool that blocks until we abort
+    const slow: AgentTool = {
+      name: "slow", description: "slow", parameters: { type: "object", properties: {} },
+      concurrency: "shared", approval: "read",
+      async execute() {
+        await fastDone
+        return { content: "slow-done", isError: false }
+      },
+    }
+    const tools = new Map<string, AgentTool>([["fast", fast], ["slow", slow]])
+    const executor = new StreamingToolExecutor(tools, "test-session", process.cwd())
+    const controller = new AbortController()
+    const toolCalls = [
+      { id: "1", type: "function" as const, function: { name: "fast", arguments: "{}" } },
+      { id: "2", type: "function" as const, function: { name: "slow", arguments: "{}" } },
+    ]
+    const results: Array<{ tc: unknown; result: ToolResult }> = []
+    const events: LoopEvent[] = []
+    // Start consuming the generator
+    const gen = executor.run(toolCalls, controller.signal, (tc, r) => results.push({ tc, result: r }))
+    // Pull first event (should be tool_start for fast)
+    const first = await gen.next()
+    events.push(first.value!)
+    // Now abort — slow tool is still running
+    controller.abort()
+    resolveFast() // release slow so it can finish
+    // Drain remaining events
+    for await (const e of gen) { events.push(e) }
+    // CONTRACT: fast tool should have exactly ONE result (not duplicated)
+    const fastResults = results.filter(r => (r.tc as any).function.name === "fast")
+    expect(fastResults).toHaveLength(1)
+    expect(fastResults[0].result.isError).toBe(false)
+    // CONTRACT: slow tool should get an error result (interrupted)
+    const slowResults = results.filter(r => (r.tc as any).function.name === "slow")
+    expect(slowResults).toHaveLength(1)
+    expect(slowResults[0].result.isError).toBe(true)
+    // Total: exactly 2 results, not 3+
+    expect(results).toHaveLength(2)
+  })
 })
