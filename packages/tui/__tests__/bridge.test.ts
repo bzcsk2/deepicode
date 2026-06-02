@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { LoopEvent } from '../../core/src/interface.js';
-import type { ReasonixEngine } from '../../core/src/engine.js';
+import type { LoopEvent } from '@deepicode/core';
+import type { ReasonixEngine } from '@deepicode/core';
 import { createBridge, type BridgeState } from '../src/bridge.js';
 
 function initialState(): BridgeState {

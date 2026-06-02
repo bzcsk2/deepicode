@@ -1,5 +1,5 @@
-import type { AgentTool } from "../../core/src/interface.js"
-import { safeStringify } from "../../tools/src/safe-stringify.js"
+import type { AgentTool } from "@deepicode/core"
+import { safeStringify } from "@deepicode/tools"
 import { getMcpHost } from "./mcp-host-global.js"
 
 export function createListMcpResourcesTool(): AgentTool {

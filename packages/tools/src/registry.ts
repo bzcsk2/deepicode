@@ -1,5 +1,5 @@
-import type { AgentTool } from "../../core/src/interface.js"
-import type { ToolSpec } from "../../core/src/types.js"
+import type { AgentTool } from "@deepicode/core"
+import type { ToolSpec } from "@deepicode/core"
 
 export class ToolRegistry {
   private tools = new Map<string, AgentTool>()

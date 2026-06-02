@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import type { AgentTool } from "../../core/src/interface.js"
+import type { AgentTool } from "@deepicode/core"
 import { safeStringify } from "./safe-stringify.js"
 
 const JOB_MARKER = "# deepicode-job:"

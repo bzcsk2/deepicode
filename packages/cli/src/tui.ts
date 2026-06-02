@@ -1,14 +1,14 @@
 import { stdin as input, stdout as output, stderr as errorOutput } from "node:process"
 import { writeSync } from "node:fs"
-import { loadConfig } from "../../core/src/config.js"
-import { ReasonixEngine } from "../../core/src/engine.js"
-import { buildSystemPrompt } from "../../core/src/system-prompt.js"
-import { createBashTool, createEditTool, createReadFileTool, createWriteFileTool, createListDirTool, createGrepTool, createTodoWriteTool, createGlobTool, createWebFetchTool, createWebSearchTool, createSkillTool, createTaskCreateTool, createTaskUpdateTool, createTaskListTool, createTaskGetTool, createTaskStopTool, createAskUserQuestionTool, createPlanModeTool, createNotebookEditTool, createSleepTool, createPushNotificationTool, createMonitorTool, createWebBrowserTool, createWorktreeTool, createCronTool, createWorkflowTool, createAgentToolTool, createSendMessageTool, createLspTool } from "../../tools/src/index.js"
-import { clearReadTracker } from "../../tools/src/stale-read.js"
-import { McpHost, createListMcpResourcesTool, createReadMcpResourceTool, createMcpAuthTool, createListMcpToolsTool, createCallMcpToolTool, setMcpHost } from "../../mcp/src/index.js"
+import { loadConfig } from "@deepicode/core"
+import { ReasonixEngine } from "@deepicode/core"
+import { buildSystemPrompt } from "@deepicode/core"
+import { createBashTool, createEditTool, createReadFileTool, createWriteFileTool, createListDirTool, createGrepTool, createTodoWriteTool, createGlobTool, createWebFetchTool, createWebSearchTool, createSkillTool, createTaskCreateTool, createTaskUpdateTool, createTaskListTool, createTaskGetTool, createTaskStopTool, createAskUserQuestionTool, createPlanModeTool, createNotebookEditTool, createSleepTool, createPushNotificationTool, createMonitorTool, createWebBrowserTool, createWorktreeTool, createCronTool, createWorkflowTool, createAgentToolTool, createSendMessageTool, createLspTool } from "@deepicode/tools"
+import { clearReadTracker } from "@deepicode/tools"
+import { McpHost, createListMcpResourcesTool, createReadMcpResourceTool, createMcpAuthTool, createListMcpToolsTool, createCallMcpToolTool, setMcpHost } from "@deepicode/mcp"
 import React from "react"
 import { wrappedRender as render } from "@deepicode/ink"
-import { App } from "../../tui/src/App.js"
+import { App } from "@deepicode/tui"
 
 function printHelp(): void {
   output.write(`deepicode

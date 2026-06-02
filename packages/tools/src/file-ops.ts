@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises"
 import { resolve } from "node:path"
-import type { AgentTool } from "../../core/src/interface.js"
+import type { AgentTool } from "@deepicode/core"
 import { recordRead } from "./stale-read.js"
 import { isSensitive } from "./sensitive.js"
 import { safeStringify, hasBinaryEncoding } from "./safe-stringify.js"

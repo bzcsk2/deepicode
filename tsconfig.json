@@ -19,6 +19,8 @@
     "paths": {
       "@anthropic/ink": ["./packages/ink/src/index.ts"],
       "@anthropic/ink/*": ["./packages/ink/src/*"],
+      "@deepicode/core": ["./packages/core/src/index.ts"],
+      "@deepicode/core/*": ["./packages/core/src/*"],
       "@deepicode/ink": ["./packages/ink/src/index.ts"],
       "@deepicode/ink/*": ["./packages/ink/src/*"],
       "@deepicode/security": ["./packages/security/src/index.ts"],
@@ -26,7 +28,9 @@
       "@deepicode/mcp": ["./packages/mcp/src/index.ts"],
       "@deepicode/mcp/*": ["./packages/mcp/src/*"],
       "@deepicode/tools": ["./packages/tools/src/index.ts"],
-      "@deepicode/tools/*": ["./packages/tools/src/*"]
+      "@deepicode/tools/*": ["./packages/tools/src/*"],
+      "@deepicode/tui": ["./packages/tui/src/index.ts"],
+      "@deepicode/tui/*": ["./packages/tui/src/*"]
     }
   },
   "include": ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx", "types/**/*.d.ts"],

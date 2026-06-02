@@ -561,6 +561,18 @@ DEEPICODE_TRACE=1
 - Loader 继续容忍末尾行损坏。
 - 验收：新增 6 个 CL-32 测试 + 基线 769/769 无回归。
 
+### CL-40：Workspace 包边界整理
+
+- `tsconfig.json` 新增 `@deepicode/core` 和 `@deepicode/tui` 的 paths 映射。
+- `@deepicode/tools` 补齐 `exports`、`types` 字段，新增 `@deepicode/core` 依赖。
+- `@deepicode/mcp` 补齐 `exports` 条件导出，新增 `@deepicode/core`、`@deepicode/tools` 依赖。
+- `@deepicode/cli` 新增 `@deepicode/tools`、`@deepicode/mcp`、`@deepicode/tui` 依赖。
+- `@deepicode/tui` 补齐 `exports`、`types` 字段。
+- `packages/tools/src/index.ts` 新增 `safeStringify`、`hasBinaryEncoding`、`clearReadTracker` 导出。
+- `packages/core/src/index.ts` 新增 `ToolProgressUpdate` 类型导出。
+- 38 个源文件的 `../../core/src/...`、`../../tools/src/...`、`../../mcp/src/...` 相对路径 import 全部替换为包名 import（`@deepicode/core`、`@deepicode/tools`、`@deepicode/mcp`、`@deepicode/tui`）。
+- 验收：typecheck 通过 + 774/774 测试通过 + 0 跨包相对路径引用残留。
+
 ---
 
 ## 6. 文档维护规则

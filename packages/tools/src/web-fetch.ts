@@ -1,4 +1,4 @@
-import type { AgentTool } from "../../core/src/interface.js"
+import type { AgentTool } from "@deepicode/core"
 import { safeStringify } from "./safe-stringify.js"
 import { isIP } from "node:net"
 import { promises as dns } from "node:dns"

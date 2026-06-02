@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process"
 import { stat } from "node:fs/promises"
 import { resolve } from "node:path"
-import type { AgentTool } from "../../core/src/interface.js"
+import type { AgentTool } from "@deepicode/core"
 import { safeStringify } from "./safe-stringify.js"
 
 const VALID_TARGETS = ["process", "disk", "memory", "file"] as const

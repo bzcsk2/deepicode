@@ -1,6 +1,6 @@
 import { resolve } from "node:path"
 import { realpathSync } from "node:fs"
-import type { AgentTool } from "../../core/src/interface.js"
+import type { AgentTool } from "@deepicode/core"
 import { safeStringify } from "./safe-stringify.js"
 
 const MAX_RESULTS = 100

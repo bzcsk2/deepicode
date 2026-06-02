@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process"
 import * as os from "node:os"
 import { resolve } from "node:path"
-import type { AgentTool, ToolProgressUpdate } from "../../core/src/interface.js"
+import type { AgentTool, ToolProgressUpdate } from "@deepicode/core"
 import { safeStringify, hasBinaryEncoding } from "./safe-stringify.js"
 import { isSensitive } from "./sensitive.js"
 

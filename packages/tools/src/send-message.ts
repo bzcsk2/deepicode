@@ -1,4 +1,4 @@
-import type { AgentTool } from "../../core/src/interface.js"
+import type { AgentTool } from "@deepicode/core"
 import { safeStringify } from "./safe-stringify.js"
 import { appendFile, mkdir, readFile } from "node:fs/promises"
 import { dirname, resolve } from "node:path"

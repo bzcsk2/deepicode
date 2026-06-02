@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { createWriteFileTool } from "../../tools/src/write-file.js"
-import { createGrepTool } from "../../tools/src/grep.js"
-import { createListDirTool } from "../../tools/src/list-dir.js"
-import { createTodoWriteTool } from "../../tools/src/todowrite.js"
+import { createWriteFileTool } from "@deepicode/tools"
+import { createGrepTool } from "@deepicode/tools"
+import { createListDirTool } from "@deepicode/tools"
+import { createTodoWriteTool } from "@deepicode/tools"
 import { mkdir, writeFile, rm } from "node:fs/promises"
 import { resolve } from "node:path"
 import { tmpdir } from "node:os"
@@ -221,7 +221,7 @@ describe("bash tool security baseline (D2: deny patterns)", () => {
   const ctx = { cwd: process.cwd(), signal: new AbortController().signal } as any
 
   it("should deny rm -rf / command", async () => {
-    const { createBashTool } = await import("../../tools/src/shell-exec.js")
+    const { createBashTool } = await import("@deepicode/tools")
     const tool = createBashTool()
     const result = await tool.execute({ command: "rm -rf /" }, ctx)
     expect(result.isError).toBe(true)
@@ -229,7 +229,7 @@ describe("bash tool security baseline (D2: deny patterns)", () => {
   })
 
   it("should deny sudo commands", async () => {
-    const { createBashTool } = await import("../../tools/src/shell-exec.js")
+    const { createBashTool } = await import("@deepicode/tools")
     const tool = createBashTool()
     const result = await tool.execute({ command: "sudo whoami" }, ctx)
     expect(result.isError).toBe(true)
@@ -237,7 +237,7 @@ describe("bash tool security baseline (D2: deny patterns)", () => {
   })
 
   it("should deny mkfs commands", async () => {
-    const { createBashTool } = await import("../../tools/src/shell-exec.js")
+    const { createBashTool } = await import("@deepicode/tools")
     const tool = createBashTool()
     const result = await tool.execute({ command: "mkfs.ext4 /dev/sda1" }, ctx)
     expect(result.isError).toBe(true)
@@ -245,7 +245,7 @@ describe("bash tool security baseline (D2: deny patterns)", () => {
   })
 
   it("should deny chmod -R 777 /", async () => {
-    const { createBashTool } = await import("../../tools/src/shell-exec.js")
+    const { createBashTool } = await import("@deepicode/tools")
     const tool = createBashTool()
     const result = await tool.execute({ command: "chmod -R 777 /" }, ctx)
     expect(result.isError).toBe(true)

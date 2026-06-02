@@ -1,6 +1,6 @@
 import { writeFile as fsWriteFile, mkdir } from "node:fs/promises"
 import { resolve, dirname } from "node:path"
-import type { AgentTool } from "../../core/src/interface.js"
+import type { AgentTool } from "@deepicode/core"
 import { isSensitive } from "./sensitive.js"
 import { safeStringify } from "./safe-stringify.js"
 

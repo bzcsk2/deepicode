@@ -10,7 +10,7 @@
 
 两份 Code Clean 报告都不能直接作为实施清单使用。
 
-- `code_clean_review_report.md` 的通用建议较多，但代码核对不足。它错误地判断项目缺少测试、缺少 README，并把 JSONL 追加写入和 Windows 支持提升为 P0。适合作为检查维度参考，不适合直接指导改代码。
+- `code_clean_review_report.md` 的通用建议较多，但代码核对不足。它错误地判断项目缺少测试、缺少 README，并把 JSONL 追加写入和 Windows 支持混入代码清理 P0。适合作为检查维度参考，不适合直接指导改代码。Windows 和 macOS 适配确实需要完成，但应作为独立专项推进。
 - `Deepicode-CodeCleanReview-2026-06-02.md` 更接近项目实际，但混入了旧版本结论。报告中的敏感路径绕过、Emergency Mode 无法退出、SSE BOM、结果持久化配额、partial repair 等问题，当前代码已经处理或已部分处理。
 - 当前最合理的路线不是全面拆文件，而是先恢复门禁、补齐生命周期边界和流式反馈，再做低风险清理，最后才做模块拆分。
 
@@ -21,6 +21,7 @@
 3. 保持工具调用结果 exactly-once 写回：一个 `tool_call_id` 最多写入一个 `tool` result。
 4. 保持会话 JSONL 为 best-effort 辅助持久化，不让磁盘问题阻断主流程。
 5. 保持运行时诊断日志默认关闭，关闭时不在热路径增加明显成本。
+6. 保持工具协议稳定：跨平台适配优先替换内部 backend，不同时重命名工具、重写 prompt 和改变权限语义。
 
 ## 2. 报告结论分类
 
@@ -33,18 +34,25 @@
 | ~~CC-03~~ | ~~P1~~ | ~~Session 列表统计字段不兼容~~ | ~~`packages/core/src/session.ts`~~ | ✅ CL-11 DONE |
 | ~~CC-04~~ | ~~P2~~ | ~~Bash 输出只在结束时截断~~ | ~~`packages/tools/src/shell-exec.ts`~~ | ✅ CL-21 DONE |
 | ~~CC-05~~ | ~~P2~~ | ~~Hash edit 的“8KB 采样”仍会整文件读取~~ | ~~`packages/tools/src/hash-edit.ts`~~ | ✅ CL-12 DONE |
-| | ~~CC-06~~ | ~~P2~~ | ~~Context 硬预算需要补齐剩余边界~~ | ~~`packages/core/src/context/manager.ts`~~ | ~~✅ CL-30 DONE~~ |
+| ~~CC-06~~ | ~~P2~~ | ~~Context 硬预算需要补齐剩余边界~~ | ~~`packages/core/src/context/manager.ts`~~ | ~~✅ CL-30 DONE~~ |
 | ~~CC-07~~ | ~~P2~~ | ~~Result persistence 配额只在内存中计数~~ | ~~`packages/core/src/result-persistence.ts`~~ | ~~✅ CL-31 DONE~~ |
-| CC-08 | P2 | 包边界被源码相对路径穿透 | `packages/mcp/src/*.ts`、`packages/tools/src/*.ts`、`packages/cli/src/tui.ts` | 多个 workspace 直接引用其他包的 `src`。短期可运行，但包导出、构建和测试边界脆弱。 |
+| ~~CC-08~~ | ~~P2~~ | ~~包边界被源码相对路径穿透~~ | `packages/mcp/src/*.ts`、`packages/tools/src/*.ts`、`packages/cli/src/tui.ts` | ~~✅ CL-40 DONE：62 个跨包相对路径 import 已替换为包名 import~~ |
 | CC-09 | P3 | 长任务仍有同步子进程阻塞 | `packages/tools/src/grep.ts`、`packages/tools/src/web-browser.ts`、`packages/tools/src/cron.ts` | `spawnSync` 会阻塞 TUI spinner、日志 flush 和中断响应。优先改可能长时间运行的 `grep` 和浏览器调用。 |
 | ~~CC-10~~ | ~~P3~~ | ~~Session writer 和 logger 的 best-effort 失败缺少可见性~~ | ~~`packages/core/src/session.ts`、`packages/core/src/runtime-logger.ts`~~ | ~~✅ CL-32 DONE~~ |
+| OS-01 | P1 | Shell 执行器只会启动 `bash` | `packages/tools/src/shell-exec.ts` | Windows 原生环境通常没有 `bash`。需要平台 backend 和进程树终止策略。 |
+| OS-02 | P1 | `glob` 的目录边界判断硬编码 `/` | `packages/tools/src/glob.ts` | `realBase + "/"` 在 Windows 路径上不可靠。需要使用 `relative()` 判断是否越界。 |
+| OS-03 | P1 | Monitor 使用 Linux 专属命令 | `packages/tools/src/monitor.ts` | `ps aux --sort`、`df -h`、`free -h` 无法直接覆盖 macOS 和 Windows。 |
+| OS-04 | P2 | Cron 只支持 Unix `crontab` | `packages/tools/src/cron.ts` | Windows 需要 Task Scheduler；macOS 可先兼容 crontab，再评估 launchd。 |
+| OS-05 | P2 | 桌面通知只支持 Linux `notify-send` | `packages/tools/src/push-notification.ts` | macOS 和 Windows 会退化为 terminal bell，需要平台通知 backend。 |
+| OS-06 | P2 | 子进程终止逻辑假设 Unix signal 语义 | `packages/tools/src/shell-exec.ts`、`packages/tools/src/worktree.ts`、`packages/mcp/src/client.ts` | Windows 需要显式终止进程树；不能依赖负 PID 和 `SIGKILL`。 |
+| OS-07 | P3 | Browser runner 使用 URL pathname 启动脚本 | `packages/tools/src/web-browser.ts` | Windows 上 `runner.pathname` 可能不是可执行的本地路径，应使用 `fileURLToPath()`。 |
 
 ### 2.2 不应直接执行的建议
 
 | 建议 | 判断 | 原因 |
 | --- | --- | --- |
 | 每条 Session JSONL 都使用 temp file + rename | 不采纳 | JSONL 本身是追加日志，loader 会从尾部寻找最近有效快照。每条记录重写全文件会放大 I/O，并改变 best-effort 设计。应补错误观测和恢复测试。 |
-| Windows PowerShell 支持列为 P0 | 暂缓 | 当前产品范围需先确认。若目标平台是 Linux/macOS，不应为平台扩张改变 Bash 语义。 |
+| 把 Windows PowerShell 支持作为零散 P0 热修 | 不采纳 | 目标平台已确认包含 Windows 和 macOS，但不能只替换一个命令。应按 Phase 4 的平台 backend、进程管理和测试矩阵整体推进。 |
 | 立即替换为“官方 tokenizer” | 暂缓 | 当前机械截断需要保守估算，不要求计费级精确。引入依赖前先用真实请求 usage 校准误差。 |
 | 立即拆分 `runLoop()`、`App.tsx`、`StreamingToolExecutor` | 暂缓 | 这些位置承担事件顺序、React 状态和 exactly-once 写回，先补行为测试，再做渐进提取。 |
 | 使用命令白名单替代 Bash deny 规则 | 不采纳 | Bash 是通用工具，白名单会破坏核心能力。安全增强应围绕权限确认、敏感路径和审计日志。 |
@@ -208,7 +216,7 @@ tool_progress(done)
 - `packages/core/src/context/manager.ts`
 - `packages/core/__tests__/context.test.ts`
 
-~~要求：
+要求：
 
 1. 保留三区域顺序和 prefix 字节稳定性。
 2. 对以下边界明确行为：
@@ -248,9 +256,228 @@ tool_progress(done)
 - 开启诊断日志时记录 queue overflow、序列化失败、append 失败和 droppedCount。
 - 不要求每条写入 fsync，不要求每条记录 rename。
 
-## Phase 4：渐进式边界清理
+## Phase 4：Windows 与 macOS 平台适配
 
-### CL-40 Workspace 包边界整理
+目标平台：
+
+| 平台 | 最低目标 | Shell 默认 backend | 计划任务 backend | 通知 backend |
+| --- | --- | --- | --- | --- |
+| Linux | 保持现有能力 | `bash -c` | `crontab` | `notify-send`，失败时 terminal bell |
+| macOS | 原生可用 | `/bin/bash -c`，允许配置覆盖 | 第一阶段兼容 `crontab`；第二阶段评估 `launchd` | `osascript`，失败时 terminal bell |
+| Windows | 原生 PowerShell 可用，不要求安装 WSL 或 Git Bash | 优先 `pwsh.exe -NoProfile -NonInteractive -Command`，fallback `powershell.exe` | `schtasks.exe` | PowerShell 通知能力或 terminal bell fallback |
+
+### OS-00 平台适配原则
+
+1. 保持对模型暴露的工具名 `bash` 暂时不变。该名称已经进入 agent tool 列表、权限规则、TUI 渲染和大量测试；立即改名会制造无关回归。
+2. 将 `bash` 视为历史兼容名，内部语义改为“执行当前平台 shell 命令”。工具 description 和 system prompt 必须告诉模型真实 backend。
+3. 不假设 Windows 安装 WSL、Git Bash 或 `bash.exe`。这些只能作为用户显式配置的可选 backend。
+4. 不追求不同 shell 语法完全等价。PowerShell 和 POSIX shell 的命令文本不同，应依赖平台提示词引导模型生成正确命令。
+5. 平台判断集中管理，禁止在每个工具中散落 `process.platform === ...` 分支。
+6. 所有外部命令使用 `spawn` / `execFile` 参数数组，避免拼接 shell 字符串导致转义和注入问题。
+
+### OS-10 建立平台能力层
+
+建议新增：
+
+- `packages/tools/src/platform/capabilities.ts`
+- `packages/tools/src/platform/process-tree.ts`
+- `packages/tools/src/platform/shell-backend.ts`
+- `packages/tools/src/platform/scheduler-backend.ts`
+- `packages/tools/src/platform/notification-backend.ts`
+- `packages/tools/src/platform/monitor-backend.ts`
+
+能力模型至少包含：
+
+```ts
+interface PlatformCapabilities {
+  platform: "linux" | "darwin" | "win32"
+  shell: { id: "bash" | "pwsh" | "powershell"; executable: string; args: string[] }
+  scheduler: { id: "crontab" | "schtasks" | "unsupported" }
+  notification: { id: "notify-send" | "osascript" | "powershell" | "terminal-bell" }
+  supportsPosixSignals: boolean
+}
+```
+
+要求：
+
+- Shell backend 支持环境变量覆盖，例如 `DEEPICODE_SHELL` 和可选 `DEEPICODE_SHELL_ARGS`。
+- 覆盖值必须经过可执行文件探测；不可用时返回结构化错误，不静默回退到语义不同的 shell。
+- 默认探测只在首次使用时执行并缓存，避免每次工具调用产生额外子进程。
+- 将平台和选中的 backend 写入诊断日志，但不记录用户命令全文。
+
+### OS-11 Shell backend 与进程树终止
+
+范围：
+
+- `packages/tools/src/shell-exec.ts`
+- `packages/tools/src/platform/shell-backend.ts`
+- `packages/tools/src/platform/process-tree.ts`
+- `packages/core/src/system-prompt.ts`
+- 对应测试
+
+实现要求：
+
+1. Linux 和 macOS 保持 POSIX 命令语义，优先使用明确的 Bash 可执行文件。
+2. Windows 默认使用 PowerShell。优先探测 `pwsh.exe`，否则使用系统自带 `powershell.exe`。
+3. Windows PowerShell 参数至少包含 `-NoProfile` 和 `-NonInteractive`，降低用户 profile 副作用。
+4. POSIX 平台继续使用 detached process group，并按 `SIGTERM → grace period → SIGKILL` 终止。
+5. Windows 使用独立的进程树终止 helper，例如通过 `taskkill.exe /PID <pid> /T /F` 回收子进程。禁止只 kill 父进程。
+6. 保持现有输出上限、progress 限频、timeout、abort 和返回字段兼容。
+7. DENY 规则按 shell backend 分组。POSIX 的 `rm -rf /` 规则不能假装覆盖 PowerShell；Windows 至少覆盖递归删除系统盘、格式化卷、危险磁盘操作和提权启动。
+
+system prompt 要求：
+
+- 明确当前 OS 和 shell backend。
+- Windows 示例使用 PowerShell，例如 `Get-ChildItem`、`Get-Content`、`Select-String`。
+- Linux/macOS 示例继续使用 POSIX 命令。
+- 推荐优先使用 `read_file`、`list_dir`、`grep` 等结构化工具，降低 shell 差异暴露面。
+
+兼容策略：
+
+- 第一阶段保留工具名 `bash`。
+- 等平台适配稳定后，再评估新增中性名称 `shell`，并把 `bash` 保留为 alias。不要在同一批改动中同时重命名。
+
+### OS-12 路径、文件 URL 和权限位兼容
+
+范围：
+
+- `packages/tools/src/glob.ts`
+- `packages/tools/src/web-browser.ts`
+- `packages/tools/src/hash-edit.ts`
+- `packages/tools/src/notebook-edit.ts`
+- `packages/mcp/src/auth.ts`
+- 对应测试
+
+要求：
+
+1. 目录包含判断统一使用 `relative(base, candidate)`：结果为空表示同目录；以 `..` 开头或为绝对路径表示越界。禁止字符串拼接 `/` 判断。
+2. 跨平台敏感路径检查继续先把反斜杠规范化为 `/`，并补充 Windows 用户目录、盘符和 UNC 路径测试。
+3. Browser runner 从 `import.meta.url` 转本地路径时使用 `fileURLToPath()`，不得直接使用 URL pathname。
+4. `chmod()` 和 Unix mode 保留属于 best-effort：POSIX 平台执行；Windows 不把 mode 失败视为业务失败。
+5. 所有测试临时目录使用 `tmpdir()` 和 `join()`，不要硬编码 `/tmp`。
+6. 增加包含空格、中文、反斜杠、盘符和 UNC path 的测试样例。
+
+### OS-13 Monitor 平台 backend
+
+范围：
+
+- `packages/tools/src/monitor.ts`
+- `packages/tools/src/platform/monitor-backend.ts`
+- 对应测试
+
+实现顺序：
+
+1. `memory` 优先使用 Node `os.totalmem()`、`os.freemem()`，三平台共享。
+2. `file` 继续使用 Node `fs.stat()`，三平台共享。
+3. `process` 使用平台 backend：
+   - Linux：`ps` 参数数组；
+   - macOS：兼容 BSD `ps`，不要使用 GNU `--sort`；
+   - Windows：PowerShell `Get-Process` 或 `tasklist.exe`。
+4. `disk` 使用平台 backend：
+   - Linux/macOS：`df` 参数数组；
+   - Windows：PowerShell `Get-PSDrive -PSProvider FileSystem`。
+5. 删除 shell pipeline，例如 `ps ... | head -20`。采样后在 TypeScript 中排序和截断。
+6. 将 exec 同步调用改为异步 spawn，支持 timeout 和 abort。
+
+验收：
+
+- 三平台都能返回稳定的结构化字段，而不是平台命令原始文本。
+- 单个采样失败不终止 Monitor 工具；结果中包含 `error` 和 backend 信息。
+
+### OS-14 Scheduler backend
+
+范围：
+
+- `packages/tools/src/cron.ts`
+- `packages/tools/src/platform/scheduler-backend.ts`
+- 对应测试
+
+策略：
+
+- 对外工具名暂时保持 `Cron`，返回结果增加 `backend` 字段。
+- Linux 使用 `crontab`。
+- macOS 第一阶段沿用 `crontab`，确保 list/create/delete 可用；是否迁移到 `launchd` 单独做 ADR，因为 launchd 的 plist 模型与 cron expression 不等价。
+- Windows 使用 `schtasks.exe`。不要把任意 cron expression 直接伪装成 `schtasks` 参数；先支持可可靠映射的 schedule 子集，对不可映射表达式返回明确错误。
+
+要求：
+
+- 抽象统一数据结构，例如 `{ name, schedule, command, backend }`。
+- Windows 任务名增加 Deepicode 前缀，避免删除用户已有任务。
+- create/delete 继续保留换行过滤和名称校验。
+- 外部命令改为异步执行，支持 timeout。
+
+### OS-15 Notification backend
+
+范围：
+
+- `packages/tools/src/push-notification.ts`
+- `packages/tools/src/platform/notification-backend.ts`
+- 对应测试
+
+要求：
+
+- Linux：使用 `execFile("notify-send", args)`，不拼接 shell 字符串。
+- macOS：使用 `osascript` 参数传值或安全生成脚本，覆盖引号和换行测试。
+- Windows：优先实现无需额外依赖的 PowerShell 路径；失败时 terminal bell fallback。
+- 返回 `{ sent, method, fallbackReason? }`，使降级行为可诊断。
+- 通知失败不能阻断 Agent 主流程。
+
+### OS-16 其他子进程与 TUI 检查
+
+范围：
+
+- `packages/tools/src/worktree.ts`
+- `packages/mcp/src/client.ts`
+- `packages/tools/src/lsp-client.ts`
+- `packages/tui/src/ModelPicker.tsx`
+- `packages/ink/src/`
+
+检查项：
+
+- `Worktree`、MCP 和 LSP 统一复用 process-tree helper，确保 timeout 和 abort 后不残留子进程。
+- `ModelPicker` 为 Windows 增加剪贴板读取 backend，例如 PowerShell `Get-Clipboard`。
+- 复用现有 Ink 中的 Windows terminal 兼容逻辑，不在 Deepicode TUI 重复实现终端控制层。
+- 验证 Windows Terminal、PowerShell 7、系统 PowerShell、macOS Terminal 和常见 Linux terminal。
+
+### OS-17 CI 与验收矩阵
+
+CI 建议使用 GitHub Actions matrix：
+
+```yaml
+os: [ubuntu-latest, macos-latest, windows-latest]
+```
+
+每个平台必须执行：
+
+```text
+1. bun run typecheck
+2. bun test
+3. shell backend 探测和简单命令执行
+4. shell timeout、abort 和子进程树回收
+5. glob 项目目录边界和路径 traversal
+6. hash-edit、notebook-edit 的原子替换
+7. Monitor memory/file/process/disk
+8. Scheduler backend 可用能力测试；不可用能力必须返回结构化错误
+9. Notification backend 或 terminal bell fallback
+10. TUI 启动、slash menu 上下键、退出后终端恢复
+```
+
+平台专项验收：
+
+- Linux：现有行为不回归。
+- macOS：Bash、BSD `ps`、`df`、`osascript`、crontab 路径通过。
+- Windows：无需安装 WSL 或 Git Bash即可完成启动、PowerShell 命令执行、中断、路径边界、Monitor、通知降级和 TUI 基础交互。
+
+不建议在第一批处理：
+
+- 将所有 POSIX 命令自动翻译成 PowerShell；
+- 为 macOS 立即完整实现 launchd；
+- 将 `bash` 工具立即全仓重命名为 `shell`；
+- 为平台 backend 引入大型依赖框架。
+
+## Phase 5：渐进式边界清理
+
+### ✅ CL-40 Workspace 包边界整理
 
 目标：减少 `../../core/src/...` 和 `../../tools/src/...` 穿透引用。
 
@@ -296,9 +523,9 @@ tool_progress(done)
 - 保持现有工具返回格式。
 - 启动配置和小型 locale 文件允许保留同步 I/O。
 
-## Phase 5：受测试保护的可维护性重构
+## Phase 6：受测试保护的可维护性重构
 
-只有 Phase 0-4 完成且行为测试稳定后，才进入本阶段。
+只有 Phase 0-5 完成且行为测试稳定后，才进入本阶段。
 
 ### CL-50 `StreamingToolExecutor` 渐进提取
 
@@ -361,7 +588,7 @@ tool_progress(done)
 2. 执行 `git status --short`，识别用户或其他 Agent 的未提交修改。
 3. 不回滚、不覆盖与当前任务无关的已有修改。
 4. 先补或确认回归测试，再修改高风险控制流。
-5. 每次只完成一个 CL 任务；完成后把结果写入 `DONE.md`，未完成项保留在 `TODO.md`。
+5. 每次只完成一个 CL 或 OS 任务；完成后把结果写入 `DONE.md`，未完成项保留在 `TODO.md`。
 
 禁止事项：
 
@@ -382,8 +609,12 @@ tool_progress(done)
 | 4 | CL-12 Hash edit 采样和关闭路径 | 降低大文件成本，保持原子编辑语义。 |
 | 5 | CL-20、CL-21 Tool Progress 和 Bash 有界输出 | 直接改善 TUI 长工具体验，并消除无界内存。 |
 | 6 | CL-30、CL-31、CL-32 边界收口 | 补齐极端工况和开发诊断能力。 |
-| 7 | CL-40、CL-41、CL-42 包边界和热路径清理 | 在功能稳定后降低维护成本。 |
-| 8 | CL-50、CL-51、CL-52 渐进式拆分 | 最后处理结构优化，避免先制造回归。 |
+| 7 | OS-00、OS-10 平台能力层 | 先固定平台契约，避免在各工具中散落条件分支。 |
+| 8 | OS-11、OS-12 Shell、进程树和路径兼容 | 先完成 Windows/macOS 可运行所需的基础能力。 |
+| 9 | OS-13 至 OS-16 Monitor、Scheduler、通知和 TUI 检查 | 补齐用户可见的平台差异。 |
+| 10 | OS-17 三平台 CI | 把适配结果变成持续门禁。 |
+| 11 | CL-40、CL-41、CL-42 包边界和热路径清理 | 在功能稳定后降低维护成本。 |
+| 12 | CL-50、CL-51、CL-52 渐进式拆分 | 最后处理结构优化，避免先制造回归。 |
 
 ## 7. 验收基线
 
@@ -402,6 +633,9 @@ bun test
 3. 中断长 Bash 命令，确认子进程结束、TUI 恢复输入、上下文只写入一个 tool result。
 4. 切换 session，确认新工具结果写入新 session，session 列表 token 统计正确。
 5. 启用诊断日志，确认能关联 submit → API → tool/MCP → result；关闭后不生成运行时日志文件。
+6. 在 Linux、macOS 和 Windows 原生环境分别启动 TUI，确认 system prompt 识别正确平台和 shell backend。
+7. 在 Windows 原生 PowerShell 环境执行、超时并中断长命令，确认不要求 WSL 或 Git Bash，且子进程树被回收。
+8. 在 macOS 验证 Bash、Monitor、通知和 crontab 路径；在 Windows 验证 PowerShell、Monitor、Scheduler、通知 fallback 和包含空格的路径。
 ```
 
 ## 8. 本次复核验证记录
