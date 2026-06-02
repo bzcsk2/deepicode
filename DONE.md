@@ -1,6 +1,6 @@
 # Deepicode 完成记录
 
-最后更新：2026-06-01
+最后更新：2026-06-02
 
 本文只记录当前代码中仍然成立的已完成功能和已验证修复。
 未完成、待验收和明确暂缓事项统一见 [TODO.md](TODO.md)。历史审计上下文见 [ADVICE.md](ADVICE.md)。
@@ -160,7 +160,82 @@ Skills 已接入：
 - Skill 工具支持 search / list / load。
 - TUI 提供 `/skill` 命令。
 
-### 3.7 编辑链路
+### 3.7 运行时日志系统（LOG0-LOG7）
+
+完整的运行时诊断系统，借鉴 Claude Code 日志架构：
+
+**核心组件：**
+
+- `RuntimeLogger`：默认关闭，异步写入 JSONL，支持事件过滤。
+- `RuntimeLogSink`：单 sink 设计，timer-based flush（1s），队列超限自动丢弃。
+- `parseDebugArgs()`：支持 `--debug`/`-d`/`--debug=<pattern>`/`--debug-file=<path>`。
+- `createRuntimeLoggerFromEnv()`：从环境变量创建 logger。
+- `registerShutdownFlush()`：优雅退出时 flush 日志。
+- `cleanupOldLogs()`：后台清理过期日志。
+- `checkDeprecatedDebugEnv()`：弃用 `DEEPICODE_DEBUG` 提示。
+
+**已实现事件（全流程覆盖）：**
+
+| 阶段 | 事件 |
+|------|------|
+| Core | `api.stream.first_event`, `api.usage`, `loop.stream.retry`, `loop.max_turns`, `reasoning.mode.switch` |
+| Executor | `tool.batch.start/done`, `tool.execute.denied` |
+| MCP | `mcp.host.start`, `mcp.server.connect.*`, `mcp.request.*` |
+| Tools | `tool.result.overflow`, `tool.result.persisted` |
+| Process | `process.shutdown.start/done` |
+
+**配置：**
+
+```text
+DEEPICODE_LOG_LEVEL=debug|info|warn|error|off
+DEEPICODE_LOG_FILE=<path>
+DEEPICODE_LOG_FILTER=<pattern>
+DEEPICODE_LOG_RETENTION_DAYS=7
+DEEPICODE_LOG_MAX_TOTAL_MB=100
+DEEPICODE_LOG_SYMLINK=1
+DEEPICODE_TUI_DEBUG=1
+DEEPICODE_TRACE=1
+```
+
+**Perfetto 追踪：**
+
+- 简化版 Chrome Trace Event JSON 输出。
+- Span 层级：interaction → llm_request → tool_batch → tool。
+- 输出到 `.deepicode/traces/trace-<session-id>.json`。
+
+### 3.8 自动推理模式切换（AS0-AS6）
+
+基于 Provider 能力和规则的自动推理模式切换：
+
+**核心组件：**
+
+- `ProviderThinkingCapabilities`：Provider 思考能力映射。
+- `ModeSelector`：纯规则评估器，状态机（idle → pending → active → cooldown）。
+- `ModeStats`：切换统计和成功率追踪。
+
+**已实现功能：**
+
+| 阶段 | 内容 |
+|------|------|
+| AS0 | `reasoning_content` 工具链连续性修复 |
+| AS1 | Provider 能力和请求映射 |
+| AS2 | 纯规则评估器（120s cooldown） |
+| AS3 | Controller 和 loop 集成 |
+| AS4 | TUI 状态显示（StatusBar + bridge 事件） |
+| AS5 | 手动覆盖 `/thinking` 命令 |
+| AS6 | 统计追踪和成功率计算 |
+
+**配置：**
+
+```text
+模式映射：
+  off → thinking disabled
+  low → thinking enabled
+  medium → thinking enabled
+  high → thinking + reasoningEffort=high
+```
+
+### 3.9 编辑链路
 
 - `read_file`：路径解析、敏感路径拒绝、二进制检测、大小限制、行范围和截断提示。
 - `write_file`：敏感路径拒绝、父目录创建和 10 MiB 限制。
@@ -205,6 +280,31 @@ Skills 已接入：
 | P1 | tool result exactly-once | 已完成 |
 | P2 | Core 中途指令队列和 loop 安全点 | 已完成 |
 | P3 | TUI 注入优先路由和反馈 | 已实现，尚有 2 个 bridge 测试待收口 |
+
+### 4.4 自动推理模式切换（AS0-AS6）
+
+| 编号 | 内容 | 状态 |
+|------|------|------|
+| AS0 | reasoning_content 工具链连续性修复 | 已完成 |
+| AS1 | Provider 能力和请求映射 | 已完成 |
+| AS2 | 纯规则评估器 | 已完成 |
+| AS3 | Controller 和 loop 集成 | 已完成 |
+| AS4 | TUI 状态显示 | 已完成 |
+| AS5 | 手动覆盖 `/thinking` 命令 | 已完成 |
+| AS6 | 统计追踪 | 已完成 |
+
+### 4.5 运行时日志系统（LOG0-LOG7）
+
+| 编号 | 内容 | 状态 |
+|------|------|------|
+| LOG0 | 冻结并验收现有骨架 | 已完成 |
+| LOG1 | 完善 Core 全链路日志 | 已完成 |
+| LOG2 | 迁移 Claude Code 调试体验 | 已完成 |
+| LOG3 | 接入 MCP 日志 | 已完成 |
+| LOG4 | 定点接入 Tools 日志 | 已完成 |
+| LOG5 | TUI 与 Ink 性能采样 | 已完成 |
+| LOG6 | Perfetto Trace（可选） | 已完成 |
+| LOG7 | 轮转、清理和文档 | 已完成 |
 
 ---
 
@@ -270,6 +370,8 @@ Skills 已接入：
 - ST2–ST4 策略系统。
 - `M10` write_file 父目录权限继承。
 - `H1–H23` 困难场景和压力测试。
+- 日志系统：批量接入 Tools 内部事件（bash timeout、web-fetch redirect 等）。
+- 日志系统：TUI Ink logger adapter 注入。
 
 详细约束见 [TODO.md](TODO.md) 和 `Deepicode-Full-Implementation-Plan.md`。
 
