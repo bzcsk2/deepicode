@@ -489,6 +489,48 @@ DEEPICODE_TRACE=1
 - `bridge.tsx` 消费事件（空 break）。
 - 验收：7 个 recommender 测试 + 基线 736/736 无回归。
 
+### CL-10：MCP 生命周期闭环
+
+- 提取 `rejectAllPending()` 辅助函数，消除 `pending` 遍历 + clear 重复代码。
+- `request()` 发送前检查 `proc`、`stdin`、`stdin.writable`，不可写时立即 reject。
+- `stdin.write()` callback 处理写入错误，失败时清除 timer + 立即 reject。
+- `disconnect()` 即使 `!_connected`，只要 `proc` 存在也执行清理。
+- `initialize` 失败（超时/非法响应）时清理 pending、重置 `proc` 和 `_connected`。
+- stderr 在 debug 日志级别记录（200 字符截断）。
+- Malformed JSON 行在 debug 日志记录 server 名称 + 行长度。
+- 验收：22 个 MCP 测试全通过。基线 742/742 无回归。
+
+### CL-11：Session stats 兼容读取
+
+- `SessionLoader.list()` 读取 `promptTokens/completionTokens`（新格式），
+  `inputTokens/outputTokens`（旧格式）作为 fallback。
+- 新格式同时存在时优先使用新格式。
+- 不迁移、不重写已有 JSONL。
+- 验收：5 个 CL-11 专项测试 + 基线 747/747 无回归。
+
+### CL-12：Hash edit 采样读取 + 流关闭
+
+- 二进制检测使用 `fs.promises.open` + `fd.read(0, 8192)` 代替 `readFile(filePath)`
+  （大文件不再整文件读取）。
+- `writer.end()` 在未命中路径上改为 `await new Promise(writer.end)`，
+  确保临时文件完全刷新后才进入 finally 清理。
+- 验收：5 个 CL-12 专项测试 + 33 个 edit 回归测试 + 基线 752/752 无回归。
+
+### CL-20：共享工具进度流
+
+- `flushSharedBatch()` 中每个共享工具收集 progress buffer，工具全部完成后 flush。
+- progress buffer 在结果事件之前统一 yield。
+- 验收：2 个 CL-20 专项测试 + 24 个 executor 回归测试通过。
+
+### CL-21：Bash 有界输出
+
+- stdout/stderr 使用有界环形缓冲区：超过 `maxChars * 2` 时丢弃早期数据，
+  最终输出标注 droppped 计数。
+- `createProgressThrottle()` 对 `reportProgress` 限频（200ms 时间窗口内去重）。
+- `AbortSignal` listener 在 close/error/timeout 路径解除注册。
+- Spawn error 使用 `reject`（不混淆为非零退出码）。
+- 验收：5 个 CL-21 专项测试 + 14 个 bash 回归测试 + 基线 759/759 无回归。
+
 ---
 
 ## 6. 文档维护规则
