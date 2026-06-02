@@ -254,6 +254,7 @@ export class StreamingToolExecutor {
           this.sessionId,
           tc.function.name,
           this.resultPersistenceConfig,
+          logger,
         )
         result = { ...rawResult, content: persisted.content }
         if (persisted.persisted) {

@@ -9,6 +9,7 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { randomUUID } from "node:crypto"
+import { noopRuntimeLogger, type RuntimeLogger } from "./runtime-logger.js"
 
 const DEFAULT_MAX_RESULT_CHARS = 200_000
 const DEFAULT_PREVIEW_CHARS = 2_000
@@ -43,6 +44,7 @@ export async function maybePersistResult(
   sessionId: string,
   toolName: string,
   config?: ResultPersistenceConfig,
+  logger: RuntimeLogger = noopRuntimeLogger,
 ): Promise<{ content: string; persisted?: PersistedResult; warning?: string }> {
   const maxChars = config?.maxResultSizeChars ?? DEFAULT_MAX_RESULT_CHARS
   if (content.length <= maxChars) {
@@ -51,6 +53,10 @@ export async function maybePersistResult(
 
   const previewLen = config?.previewChars ?? DEFAULT_PREVIEW_CHARS
   const preview = content.slice(0, previewLen)
+
+  if (logger.isEnabled("info")) {
+    logger.info("tool.result.overflow", { toolName, originalChars: content.length, previewChars: previewLen })
+  }
 
   try {
     const dir = join(process.cwd(), ".deepicode", "results", sanitizeId(sessionId))
@@ -67,6 +73,10 @@ export async function maybePersistResult(
       previewChars: previewLen,
     }
 
+    if (logger.isEnabled("info")) {
+      logger.info("tool.result.persisted", { toolName, persistedPath: filePath, originalChars: content.length })
+    }
+
     return {
       content: preview,
       persisted,
@@ -74,6 +84,9 @@ export async function maybePersistResult(
   } catch (e) {
     // Write failure — fall back to truncated preview with warning
     const warning = `Result persistence failed: ${e instanceof Error ? e.message : String(e)}`
+    if (logger.isEnabled("warn")) {
+      logger.warn("tool.result.persist_error", { toolName, error: e instanceof Error ? e.message : String(e) })
+    }
     return {
       content: preview,
       warning,

@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises"
 import { resolve } from "node:path"
 import { McpClient } from "./client.js"
 import type { McpTool, McpResource } from "./client.js"
+import type { DiagnosticLogger } from "./diagnostics.js"
+import { noopDiagnosticLogger } from "./diagnostics.js"
 
 interface McpServerConfig {
   command: string
@@ -17,6 +19,11 @@ export class McpHost {
   private clients = new Map<string, McpClient>()
   private tools = new Map<string, { client: McpClient; tool: McpTool }>()
   private resources = new Map<string, { client: McpClient; resource: McpResource }>()
+  private logger: DiagnosticLogger
+
+  constructor(logger: DiagnosticLogger = noopDiagnosticLogger) {
+    this.logger = logger
+  }
 
   get allTools(): Array<{ client: string; tool: McpTool }> {
     return Array.from(this.tools.values()).map(({ client, tool }) => ({ client: client.serverName, tool }))
@@ -42,6 +49,9 @@ export class McpHost {
 
     const auth = await readAuthStore()
     const entries = Object.entries(config.mcpServers ?? {})
+    if (this.logger.isEnabled("info")) {
+      this.logger.info("mcp.host.start", { serverCount: entries.length })
+    }
     await Promise.all(entries.map(([name, serverConfig]) =>
       this.connect(name, withCredential(serverConfig, auth[name]?.apiKey)).catch(() => { /* individual failure doesn't block others */ })
     ))
@@ -50,31 +60,47 @@ export class McpHost {
   async connect(name: string, config: McpServerConfig): Promise<void> {
     if (this.clients.has(name)) return
 
-    const client = new McpClient(name)
-    await client.connect(config.command, config.args ?? [], config.env)
-    this.clients.set(name, client)
-
-    // Register tools (sorted for stable prefix cache)
-    const tools = (await client.listTools()).sort((a, b) => a.name.localeCompare(b.name))
-    for (const tool of tools) {
-      this.tools.set(`${name}:${tool.name}`, { client, tool })
+    const startedAt = this.logger.isEnabled("info") ? Date.now() : 0
+    if (this.logger.isEnabled("info")) {
+      this.logger.info("mcp.server.connect.start", { mcpServer: name })
     }
 
-    // Register resources
     try {
-      const resources = await client.listResources()
-      for (const resource of resources) {
-        this.resources.set(`${name}:${resource.uri}`, { client, resource })
+      const client = new McpClient(name, this.logger)
+      await client.connect(config.command, config.args ?? [], config.env)
+      this.clients.set(name, client)
+
+      // Register tools (sorted for stable prefix cache)
+      const tools = (await client.listTools()).sort((a, b) => a.name.localeCompare(b.name))
+      for (const tool of tools) {
+        this.tools.set(`${name}:${tool.name}`, { client, tool })
       }
-    } catch {
-      // resources/list is optional
-    }
 
-    // Register prompts
-    try {
-      await client.listPrompts()
-    } catch {
-      // prompts/list is optional
+      // Register resources
+      try {
+        const resources = await client.listResources()
+        for (const resource of resources) {
+          this.resources.set(`${name}:${resource.uri}`, { client, resource })
+        }
+      } catch {
+        // resources/list is optional
+      }
+
+      // Register prompts
+      try {
+        await client.listPrompts()
+      } catch {
+        // prompts/list is optional
+      }
+
+      if (this.logger.isEnabled("info")) {
+        this.logger.info("mcp.server.connect.done", { mcpServer: name, durationMs: Date.now() - startedAt, toolCount: tools.length })
+      }
+    } catch (e) {
+      if (this.logger.isEnabled("warn")) {
+        this.logger.warn("mcp.server.connect.error", { mcpServer: name, durationMs: Date.now() - startedAt, errorClass: e instanceof Error ? e.name : "Unknown" })
+      }
+      throw e
     }
   }
 

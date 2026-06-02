@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process"
 import { resolve } from "node:path"
 import { readFile } from "node:fs/promises"
+import type { DiagnosticLogger } from "./diagnostics.js"
+import { noopDiagnosticLogger } from "./diagnostics.js"
 
 export interface McpTool {
   name: string
@@ -44,9 +46,11 @@ export class McpClient {
   private msgId = 0
   private _connected = false
   private name: string
+  private logger: DiagnosticLogger
 
-  constructor(name: string) {
+  constructor(name: string, logger: DiagnosticLogger = noopDiagnosticLogger) {
     this.name = name
+    this.logger = logger
   }
 
   get connected(): boolean { return this._connected }
@@ -55,6 +59,8 @@ export class McpClient {
 
   async connect(command: string, args: string[] = [], env?: Record<string, string>): Promise<void> {
     if (this._connected) return
+
+    const startedAt = this.logger.isEnabled("info") ? Date.now() : 0
 
     this.proc = spawn(command, args, {
       stdio: ["pipe", "pipe", "pipe"],
@@ -146,13 +152,26 @@ export class McpClient {
   private async request(method: string, params?: Record<string, unknown>): Promise<unknown> {
     const id = ++this.msgId
     const msg: JsonRpcRequest = { jsonrpc: "2.0", id, method, params }
+    const startedAt = this.logger.isEnabled("debug") ? Date.now() : 0
+
+    if (this.logger.isEnabled("debug")) {
+      this.logger.debug("mcp.request.start", { mcpServer: this.name, method, requestId: id })
+    }
+
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
+        if (this.logger.isEnabled("warn")) {
+          this.logger.warn("mcp.request.timeout", { mcpServer: this.name, method, timeoutMs: REQUEST_TIMEOUT })
+        }
         reject(new Error(`MCP request timed out after ${REQUEST_TIMEOUT}ms: ${method}`))
       }, REQUEST_TIMEOUT)
       this.pending.set(id, { resolve, reject, timer })
       this.proc?.stdin?.write(JSON.stringify(msg) + "\n")
+    }).finally(() => {
+      if (this.logger.isEnabled("debug")) {
+        this.logger.debug("mcp.request.done", { mcpServer: this.name, method, durationMs: Date.now() - startedAt })
+      }
     })
   }
 
@@ -168,6 +187,9 @@ export class McpClient {
           clearTimeout(handler.timer)
           this.pending.delete(resp.id)
           if (resp.error) {
+            if (this.logger.isEnabled("warn")) {
+              this.logger.warn("mcp.request.error", { mcpServer: this.name, method: resp.id, errorClass: "JsonRpcError" })
+            }
             handler.reject(new Error(`MCP error ${resp.error.code}: ${resp.error.message}`))
           } else {
             handler.resolve(resp.result)
