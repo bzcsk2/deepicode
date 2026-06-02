@@ -95,8 +95,11 @@ export class SessionLoader {
             }
             if (rec.type === "stats" && typeof rec.payload === "object" && rec.payload) {
               const s = rec.payload as Record<string, unknown>
-              if (typeof s.inputTokens === "number") lastInputTokens = s.inputTokens
-              if (typeof s.outputTokens === "number") lastOutputTokens = s.outputTokens
+              // Prefer new format (promptTokens/completionTokens), fallback to old format (inputTokens/outputTokens)
+              if (typeof s.promptTokens === "number") lastInputTokens = s.promptTokens
+              else if (typeof s.inputTokens === "number") lastInputTokens = s.inputTokens
+              if (typeof s.completionTokens === "number") lastOutputTokens = s.completionTokens
+              else if (typeof s.outputTokens === "number") lastOutputTokens = s.outputTokens
             }
           } catch { continue }
         }

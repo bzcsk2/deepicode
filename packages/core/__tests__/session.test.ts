@@ -705,3 +705,62 @@ describe("S2: session ID validation and list correctness", () => {
     })
   })
 })
+
+describe("CL-11: Session stats compatibility", () => {
+  let tmpDir: string
+
+  beforeEach(async () => {
+    tmpDir = join(tmpdir(), `deepicode-cl11-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    await mkdir(tmpDir, { recursive: true })
+    SessionLoader.sessionDir = tmpDir
+  })
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+  })
+
+  it("reads new format (promptTokens/completionTokens)", async () => {
+    const content = `{"ts":1,"type":"messages","payload":[{"role":"user","content":"hi"}]}\n{"ts":2,"type":"stats","payload":{"promptTokens":100,"completionTokens":50}}\n`
+    await writeFile(join(tmpDir, "s1.jsonl"), content, "utf-8")
+    const sessions = await SessionLoader.list()
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0].inputTokens).toBe(100)
+    expect(sessions[0].outputTokens).toBe(50)
+  })
+
+  it("reads old format (inputTokens/outputTokens)", async () => {
+    const content = `{"ts":1,"type":"messages","payload":[{"role":"user","content":"hi"}]}\n{"ts":2,"type":"stats","payload":{"inputTokens":200,"outputTokens":75}}\n`
+    await writeFile(join(tmpDir, "s2.jsonl"), content, "utf-8")
+    const sessions = await SessionLoader.list()
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0].inputTokens).toBe(200)
+    expect(sessions[0].outputTokens).toBe(75)
+  })
+
+  it("prefers new format over old when both present", async () => {
+    const content = `{"ts":1,"type":"messages","payload":[{"role":"user","content":"hi"}]}\n{"ts":2,"type":"stats","payload":{"promptTokens":100,"completionTokens":50,"inputTokens":200,"outputTokens":75}}\n`
+    await writeFile(join(tmpDir, "s3.jsonl"), content, "utf-8")
+    const sessions = await SessionLoader.list()
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0].inputTokens).toBe(100)
+    expect(sessions[0].outputTokens).toBe(50)
+  })
+
+  it("uses last stats record", async () => {
+    const content = `{"ts":1,"type":"stats","payload":{"promptTokens":10,"completionTokens":5}}\n{"ts":2,"type":"stats","payload":{"promptTokens":100,"completionTokens":50}}\n{"ts":3,"type":"messages","payload":[{"role":"user","content":"hi"}]}\n`
+    await writeFile(join(tmpDir, "s4.jsonl"), content, "utf-8")
+    const sessions = await SessionLoader.list()
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0].inputTokens).toBe(100)
+    expect(sessions[0].outputTokens).toBe(50)
+  })
+
+  it("shows zero for missing stats", async () => {
+    const content = `{"ts":1,"type":"messages","payload":[{"role":"user","content":"hi"}]}\n`
+    await writeFile(join(tmpDir, "s5.jsonl"), content, "utf-8")
+    const sessions = await SessionLoader.list()
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0].inputTokens).toBe(0)
+    expect(sessions[0].outputTokens).toBe(0)
+  })
+})

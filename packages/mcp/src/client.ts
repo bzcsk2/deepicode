@@ -39,6 +39,14 @@ interface JsonRpcResponse {
 
 const REQUEST_TIMEOUT = 30_000
 
+function rejectAllPending(pending: Map<string | number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>, err: Error): void {
+  for (const [, entry] of pending) {
+    clearTimeout(entry.timer)
+    entry.reject(err)
+  }
+  pending.clear()
+}
+
 export class McpClient {
   private proc: ChildProcess | null = null
   private buffer = ""
@@ -73,23 +81,20 @@ export class McpClient {
     })
 
     this.proc.stderr?.on("data", (chunk: Buffer) => {
-      // MCP servers often log to stderr; ignore by default
+      if (this.logger.isEnabled("debug")) {
+        const snippet = chunk.toString().slice(0, 200)
+        this.logger.debug("mcp.stderr", { mcpServer: this.name, length: chunk.length, snippet })
+      }
     })
 
     this.proc.on("exit", (code) => {
       this._connected = false
-      for (const [, handler] of this.pending) {
-        handler.reject(new Error(`MCP server exited with code ${code}`))
-      }
-      this.pending.clear()
+      rejectAllPending(this.pending, new Error(`MCP server exited with code ${code}`))
     })
 
     this.proc.on("error", (err) => {
       this._connected = false
-      for (const [, handler] of this.pending) {
-        handler.reject(err)
-      }
-      this.pending.clear()
+      rejectAllPending(this.pending, err)
     })
 
     // Send initialize
@@ -97,25 +102,35 @@ export class McpClient {
       protocolVersion: "2024-11-05",
       capabilities: {},
       clientInfo: { name: "deepicode", version: "0.1.0" },
+    }).catch((err) => {
+      // initialize failed — clean up before rethrowing
+      this.proc?.kill("SIGTERM")
+      rejectAllPending(this.pending, err)
+      this.proc = null
+      this._connected = false
+      throw err
     })
 
     const initResult = result as { protocolVersion?: string; capabilities?: Record<string, unknown>; serverInfo?: Record<string, unknown> }
     if (!initResult?.protocolVersion) {
       this.proc?.kill("SIGTERM")
+      rejectAllPending(this.pending, new Error("MCP initialize failed: no protocolVersion in response"))
+      this.proc = null
+      this._connected = false
       throw new Error("MCP initialize failed: no protocolVersion in response")
     }
-    this.proc?.stdin?.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} }) + "\n")
+    try {
+      this.proc?.stdin?.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} }) + "\n")
+    } catch {
+      // notification write failure is non-fatal
+    }
     this._connected = true
   }
 
   async disconnect(): Promise<void> {
-    if (!this._connected || !this.proc) return
-    // Reject all pending requests so callers don't hang
-    for (const [, entry] of this.pending) {
-      clearTimeout(entry.timer)
-      entry.reject(new Error("MCP client disconnected"))
-    }
-    this.pending.clear()
+    // Even if !_connected, clean up if proc exists
+    if (!this.proc) return
+    rejectAllPending(this.pending, new Error("MCP client disconnected"))
     try {
       this.proc.kill("SIGTERM")
       await new Promise<void>(resolve => {
@@ -123,6 +138,7 @@ export class McpClient {
         this.proc?.once("exit", () => { clearTimeout(t); resolve() })
       })
     } catch {}
+    this.proc = null
     this._connected = false
   }
 
@@ -154,6 +170,15 @@ export class McpClient {
     const msg: JsonRpcRequest = { jsonrpc: "2.0", id, method, params }
     const startedAt = this.logger.isEnabled("debug") ? Date.now() : 0
 
+    // Check process and stdin are alive before sending
+    if (!this.proc || !this.proc.stdin || !this.proc.stdin.writable) {
+      const err = new Error(`MCP request failed: ${this.name} not connected or stdin not writable`)
+      if (this.logger.isEnabled("warn")) {
+        this.logger.warn("mcp.request.fail", { mcpServer: this.name, method, error: err.message })
+      }
+      throw err
+    }
+
     if (this.logger.isEnabled("debug")) {
       this.logger.debug("mcp.request.start", { mcpServer: this.name, method, requestId: id })
     }
@@ -167,7 +192,19 @@ export class McpClient {
         reject(new Error(`MCP request timed out after ${REQUEST_TIMEOUT}ms: ${method}`))
       }, REQUEST_TIMEOUT)
       this.pending.set(id, { resolve, reject, timer })
-      this.proc?.stdin?.write(JSON.stringify(msg) + "\n")
+      try {
+        this.proc!.stdin!.write(JSON.stringify(msg) + "\n", (err: Error | null | undefined) => {
+          if (err) {
+            this.pending.delete(id)
+            clearTimeout(timer)
+            reject(new Error(`MCP request write failed: ${err.message}`))
+          }
+        })
+      } catch (writeErr) {
+        this.pending.delete(id)
+        clearTimeout(timer)
+        reject(new Error(`MCP request write failed: ${(writeErr as Error).message}`))
+      }
     }).finally(() => {
       if (this.logger.isEnabled("debug")) {
         this.logger.debug("mcp.request.done", { mcpServer: this.name, method, durationMs: Date.now() - startedAt })
@@ -177,7 +214,7 @@ export class McpClient {
 
   private processLines(): void {
     const lines = this.buffer.split("\n")
-    this.buffer = lines.pop() ?? "" // keep partial line
+    this.buffer = lines.pop() ?? ""
     for (const line of lines) {
       if (!line.trim()) continue
       try {
@@ -196,8 +233,9 @@ export class McpClient {
           }
         }
       } catch {
-        // malformed JSON line — drop silently; valid responses without matching
-        // id also land here (server-originated notifications)
+        if (this.logger.isEnabled("debug")) {
+          this.logger.debug("mcp.parse.error", { mcpServer: this.name, length: line.length })
+        }
       }
     }
   }
