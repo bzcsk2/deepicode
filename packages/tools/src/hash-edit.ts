@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto"
 import { createReadStream, createWriteStream } from "node:fs"
-import { stat, rename, unlink, chmod, mkdir, readFile } from "node:fs/promises"
+import { open, stat, rename, unlink, chmod, mkdir } from "node:fs/promises"
 import { dirname } from "node:path"
 
 export interface HashEditResult {
@@ -39,10 +39,16 @@ export async function hashAnchoredReplaceOnce(
 
   // Quick binary check: read first 8KB to detect non-UTF-8 content
   try {
-    const head = await readFile(filePath)
-    const sample = new TextDecoder("utf-8", { fatal: false }).decode(head.slice(0, 8192))
-    if (hasBinaryContent(sample)) {
-      throw new Error("Binary file detected: editing non-UTF-8 files is not supported")
+    const fd = await open(filePath, "r")
+    try {
+      const buf = Buffer.alloc(8192)
+      const { bytesRead } = await fd.read(buf, 0, 8192, 0)
+      const sample = new TextDecoder("utf-8", { fatal: false }).decode(buf.subarray(0, bytesRead))
+      if (hasBinaryContent(sample)) {
+        throw new Error("Binary file detected: editing non-UTF-8 files is not supported")
+      }
+    } finally {
+      await fd.close()
     }
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("Binary file detected")) throw e
@@ -97,7 +103,7 @@ export async function hashAnchoredReplaceOnce(
     }
 
     if (!replaced) {
-      writer.end()
+      await new Promise<void>((resolve) => writer.end(resolve))
       return null
     }
 

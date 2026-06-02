@@ -334,3 +334,68 @@ describe("CRLF normalization (L5)", () => {
     expect(content).toContain("\r\n") // CRLF preserved
   })
 })
+
+describe("CL-12: Hash edit sampling and stream close", () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "deepicode-cl12-"))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it("does not read entire file for binary sampling", async () => {
+    // Create a 1MB file with known content
+    const filePath = join(dir, "large.txt")
+    const line = "Hello world, this is a test file with some content. "
+    // Build enough content to exceed 8KB
+    const largeContent = line.repeat(5000) + "\n---OLD_MARKER---\n" + line.repeat(5000)
+    writeFileSync(filePath, largeContent, "utf-8")
+
+    const result = await hashAnchoredReplaceOnce(filePath, "---OLD_MARKER---", "---NEW_MARKER---")
+    expect(result).not.toBeNull()
+    expect(result!.replacedCount).toBe(1)
+    const final = readFileSync(filePath, "utf-8")
+    expect(final).toContain("---NEW_MARKER---")
+  })
+
+  it("rejects binary file with no temp file left behind", async () => {
+    const filePath = join(dir, "binary.bin")
+    // Write bytes that include invalid UTF-8 sequences
+    const buf = Buffer.alloc(100)
+    // Fill with 0xFF which is invalid UTF-8 (will be replaced with U+FFFD)
+    buf.fill(0xff)
+    buf.write("text", 90, "utf-8")
+    writeFileSync(filePath, buf)
+
+    await expect(hashAnchoredReplaceOnce(filePath, "text", "NEW")).rejects.toThrow("Binary file detected")
+  })
+
+  it("returns null when old_string not found and cleans up", async () => {
+    const filePath = join(dir, "nomatch.txt")
+    writeFileSync(filePath, "Hello world", "utf-8")
+
+    const result = await hashAnchoredReplaceOnce(filePath, "NONEXISTENT", "NEW")
+    expect(result).toBeNull()
+
+    // File unchanged
+    const content = readFileSync(filePath, "utf-8")
+    expect(content).toBe("Hello world")
+  })
+
+  it("rejects empty old_string", async () => {
+    const result = await hashAnchoredReplaceOnce("/tmp/nonexistent", "", "new")
+    expect(result).toBeNull()
+  })
+
+  it("returns null when oldHash does not match", async () => {
+    const filePath = join(dir, "hashcheck.txt")
+    writeFileSync(filePath, "Hello world", "utf-8")
+
+    // Wrong hash — should return null
+    const result = await hashAnchoredReplaceOnce(filePath, "Hello", "Hi", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    expect(result).toBeNull()
+  })
+})
