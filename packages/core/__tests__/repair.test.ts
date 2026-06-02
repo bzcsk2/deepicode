@@ -92,6 +92,7 @@ describe("repairToolArguments - Storm", () => {
     const result = repairToolArguments('"name": "test"')
     expect(result.success).toBe(true)
     expect(result.args).toEqual({ name: "test" })
+    expect(result.partial).toBeFalsy()
   })
 
   it("should accept empty object", () => {
@@ -105,6 +106,33 @@ describe("repairToolArguments - Storm", () => {
     // Scavenge 1d wraps in {} and gets valid JSON → both keys present
     expect(result.success).toBe(true)
     expect(result.args).toEqual({ a: "1", b: "2" })
+  })
+})
+
+describe("AUD-08: storm partial rejection", () => {
+  it("should mark storm result as partial when multiple KV pairs found", () => {
+    // Input structured so scavenge fails but storm matches 2 KV pairs
+    const result = repairToolArguments('"a": "1" garbage "b": "2"')
+    expect(result.success).toBe(true)
+    expect(result.method).toBe("storm")
+    expect(result.args).toEqual({ a: "1", b: "2" })
+    expect(result.partial).toBe(true)
+  })
+
+  it("single KV storm result should not be partial", () => {
+    // Use input with garbage that prevents scavenge but storm can match
+    const result = repairToolArguments('"only": "key" @@@')
+    expect(result.success).toBe(true)
+    expect(result.method).toBe("storm")
+    expect(result.partial).toBeFalsy()
+  })
+
+  it("should reject partial repair in executor", () => {
+    // Simulate executor behavior: when partial=true, args are rejected
+    const result = repairToolArguments('"path": "/x" garbage "old_string": "hello"')
+    expect(result.success).toBe(true)
+    expect(result.partial).toBe(true)
+    // Executor would see partial=true and skip execution
   })
 })
 

@@ -525,3 +525,183 @@ describe("M9: SessionWriter enqueue", () => {
     }).not.toThrow()
   })
 })
+
+describe("S1: session switching with full rebind", () => {
+  let tmpDir: string
+  let sessionDir: string
+
+  beforeEach(async () => {
+    tmpDir = join(tmpdir(), `deepicode-s1-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    sessionDir = join(tmpDir, ".deepicode", "sessions")
+    await mkdir(sessionDir, { recursive: true })
+    SessionLoader.sessionDir = sessionDir
+  })
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+  })
+
+  it("should rebind sessionWriter and toolExecutor sessionId on switch", async () => {
+    // Write session A
+    await writeFile(join(sessionDir, "session-a.jsonl"),
+      JSON.stringify({ ts: 1, type: "messages", payload: [{ role: "user", content: "hello from A" }] }) + "\n")
+
+    const { ReasonixEngine } = await import("../src/engine.js")
+    const config = { apiKey: "test", baseUrl: "http://localhost", model: "test", maxTokens: 1000, temperature: 0, maxContextRounds: 20, contextWindow: 128000 }
+
+    // Start with session A
+    const engine = new ReasonixEngine(config as any, undefined, "session-a")
+    expect(engine.getState().sessionId).toBe("session-a")
+
+    // Switch to a new session B
+    await engine.loadSession("session-b")
+    expect(engine.getState().sessionId).toBe("session-b")
+
+    // Context should be empty (new session)
+    expect(engine.getState().messages.filter(m => m.role !== "system")).toHaveLength(0)
+
+    // Now switch back to session A — should load its messages
+    const msgs = await engine.loadSession("session-a")
+    expect(msgs).toHaveLength(1)
+    expect(msgs[0].content).toBe("hello from A")
+    expect(engine.getState().sessionId).toBe("session-a")
+  })
+
+  it("should throw when switching during active submit", async () => {
+    const { ReasonixEngine } = await import("../src/engine.js")
+    const config = { apiKey: "test", baseUrl: "http://localhost", model: "test", maxTokens: 1000, temperature: 0, maxContextRounds: 20, contextWindow: 128000 }
+
+    const engine = new ReasonixEngine(config as any, undefined, "session-during-submit")
+    expect(engine.getState().sessionId).toBe("session-during-submit")
+
+    // Manually simulate submit state
+    ;(engine as any).isSubmitting = true
+
+    await expect(engine.loadSession("other-session")).rejects.toThrow("Cannot switch sessions while submit is active")
+  })
+})
+
+describe("S2: session ID validation and list correctness", () => {
+  let sessDir: string
+
+  beforeEach(() => {
+    sessDir = join(tmpdir(), `deepicode-s2-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    SessionLoader.sessionDir = sessDir
+  })
+
+  afterEach(async () => {
+    await rm(sessDir, { recursive: true, force: true }).catch(() => {})
+  })
+
+  describe("validateSessionId", () => {
+    it("should accept valid UUID", () => {
+      expect(SessionLoader.validateSessionId("550e8400-e29b-41d4-a716-446655440000")).toBe(true)
+    })
+
+    it("should accept simple alphanumeric IDs", () => {
+      expect(SessionLoader.validateSessionId("my-session-123")).toBe(true)
+    })
+
+    it("should reject empty string", () => {
+      expect(SessionLoader.validateSessionId("")).toBe(false)
+    })
+
+    it("should reject path traversal", () => {
+      expect(SessionLoader.validateSessionId("../etc/passwd")).toBe(false)
+      expect(SessionLoader.validateSessionId("foo/../../bar")).toBe(false)
+    })
+
+    it("should reject null bytes and control characters", () => {
+      expect(SessionLoader.validateSessionId("foo\x00bar")).toBe(false)
+    })
+
+    it("should reject IDs with slashes or backslashes", () => {
+      expect(SessionLoader.validateSessionId("foo/bar")).toBe(false)
+      expect(SessionLoader.validateSessionId("foo\\bar")).toBe(false)
+    })
+
+    it("should reject '.' and '..'", () => {
+      expect(SessionLoader.validateSessionId(".")).toBe(false)
+      expect(SessionLoader.validateSessionId("..")).toBe(false)
+    })
+
+    it("should reject overly long IDs", () => {
+      expect(SessionLoader.validateSessionId("a".repeat(129))).toBe(false)
+    })
+  })
+
+  describe("SessionLoader.read path safety", () => {
+    it("should reject path traversal in read()", async () => {
+      await mkdir(sessDir, { recursive: true })
+      await expect(SessionLoader.read("../outside")).rejects.toThrow("Invalid session ID")
+    })
+  })
+
+  describe("list messageCount correctness", () => {
+    it("should use last snapshot message count, not snapshot count", async () => {
+      await mkdir(sessDir, { recursive: true })
+      const lines = [
+        JSON.stringify({ ts: 1, type: "messages", payload: [{ role: "user", content: "first" }] }),
+        JSON.stringify({ ts: 2, type: "messages", payload: [
+          { role: "user", content: "second" },
+          { role: "assistant", content: "reply" },
+        ]}),
+      ]
+      await writeFile(join(sessDir, "s.jsonl"), lines.join("\n") + "\n")
+      const list = await SessionLoader.list()
+      expect(list[0].messageCount).toBe(2) // last snapshot has 2 messages
+      expect(list[0].userMessages).toBe(1)
+    })
+  })
+
+  describe("list sort by last activity", () => {
+    it("should sort by most recent record timestamp", async () => {
+      await mkdir(sessDir, { recursive: true })
+      // Session A: first msg at ts=100, last at ts=300
+      const aLines = [
+        JSON.stringify({ ts: 100, type: "event", payload: "start" }),
+        JSON.stringify({ ts: 300, type: "messages", payload: [{ role: "user", content: "old latest" }] }),
+      ]
+      // Session B: first msg at ts=200, last at ts=400 (more recent)
+      const bLines = [
+        JSON.stringify({ ts: 200, type: "event", payload: "start" }),
+        JSON.stringify({ ts: 400, type: "messages", payload: [{ role: "user", content: "newer latest" }] }),
+      ]
+      await writeFile(join(sessDir, "a.jsonl"), aLines.join("\n") + "\n")
+      await writeFile(join(sessDir, "b.jsonl"), bLines.join("\n") + "\n")
+      const list = await SessionLoader.list()
+      expect(list).toHaveLength(2)
+      expect(list[0].id).toBe("b") // most recent first
+      expect(list[1].id).toBe("a")
+    })
+  })
+
+  describe("engine integration", () => {
+    let tmpDir: string
+    let sessionDir: string
+
+    beforeEach(async () => {
+      tmpDir = join(tmpdir(), `deepicode-s2-engine-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+      sessionDir = join(tmpDir, ".deepicode", "sessions")
+      await mkdir(sessionDir, { recursive: true })
+      SessionLoader.sessionDir = sessionDir
+    })
+
+    afterEach(async () => {
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+    })
+
+    it("should reject invalid session ID in engine.loadSession", async () => {
+      const { ReasonixEngine } = await import("../src/engine.js")
+      const config = { apiKey: "test", baseUrl: "http://localhost", model: "test", maxTokens: 1000, temperature: 0, maxContextRounds: 20, contextWindow: 128000 }
+      const engine = new ReasonixEngine(config as any, undefined, "valid-session")
+      await expect(engine.loadSession("../evil")).rejects.toThrow("Invalid session ID")
+    })
+
+    it("should reject invalid session ID in engine.recover", async () => {
+      const { ReasonixEngine } = await import("../src/engine.js")
+      const config = { apiKey: "test", baseUrl: "http://localhost", model: "test", maxTokens: 1000, temperature: 0, maxContextRounds: 20, contextWindow: 128000 }
+      await expect(ReasonixEngine.recover(config as any, "../evil")).rejects.toThrow("Invalid session ID")
+    })
+  })
+})

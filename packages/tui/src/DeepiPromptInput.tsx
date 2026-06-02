@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Box, Text, useInput } from '@deepicode/ink';
 import { t } from './i18n/index.js';
 
@@ -9,6 +9,12 @@ interface DeepiPromptInputProps {
   disabled?: boolean;
   queueCount?: number;
   onCancel: () => void;
+  /** When true, disable history navigation to let autocomplete handle keys */
+  suppressHistory?: boolean;
+}
+
+export interface DeepiPromptInputHandle {
+  writeText: (text: string) => void;
 }
 
 const MAX_HISTORY = 100;
@@ -48,12 +54,22 @@ function findWordRight(text: string, pos: number): number {
   return i;
 }
 
-export function DeepiPromptInput({ onSubmit, onChange, isLoading, disabled, queueCount = 0, onCancel }: DeepiPromptInputProps) {
+export const DeepiPromptInput = forwardRef<DeepiPromptInputHandle, DeepiPromptInputProps>(function DeepiPromptInput(
+  { onSubmit, onChange, isLoading, disabled, queueCount = 0, onCancel, suppressHistory = false },
+  ref
+) {
   const [input, setInput] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [cursor, setCursor] = useState(0);
   const escRef = useRef(0);
+
+  useImperativeHandle(ref, () => ({
+    writeText: (text: string) => {
+      setInput(text);
+      setCursor(text.length);
+    }
+  }));
 
   useEffect(() => { onChange?.(input); }, [input, onChange]);
 
@@ -110,29 +126,33 @@ export function DeepiPromptInput({ onSubmit, onChange, isLoading, disabled, queu
     }
 
     if (key.upArrow) {
-      setHistoryIdx(prev => {
-        const next = Math.min(prev + 1, history.length - 1);
-        if (next >= 0) {
-          setInput(history[next] ?? '');
-          setCursor((history[next] ?? '').length);
-        }
-        return next;
-      });
+      if (!suppressHistory) {
+        setHistoryIdx(prev => {
+          const next = Math.min(prev + 1, history.length - 1);
+          if (next >= 0) {
+            setInput(history[next] ?? '');
+            setCursor((history[next] ?? '').length);
+          }
+          return next;
+        });
+      }
       return;
     }
 
     if (key.downArrow) {
-      setHistoryIdx(prev => {
-        const next = prev - 1;
-        if (next < 0) {
-          setInput('');
-          setCursor(0);
-          return -1;
-        }
-        setInput(history[next] ?? '');
-        setCursor((history[next] ?? '').length);
-        return next;
-      });
+      if (!suppressHistory) {
+        setHistoryIdx(prev => {
+          const next = prev - 1;
+          if (next < 0) {
+            setInput('');
+            setCursor(0);
+            return -1;
+          }
+          setInput(history[next] ?? '');
+          setCursor((history[next] ?? '').length);
+          return next;
+        });
+      }
       return;
     }
 
@@ -245,4 +265,4 @@ export function DeepiPromptInput({ onSubmit, onChange, isLoading, disabled, queu
       <Text wrap="wrap" dimColor={isPlaceholder}>{displayText}</Text>
     </Box>
   );
-}
+});

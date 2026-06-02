@@ -6,7 +6,7 @@ import type { ChatMessage, DeepicodeConfig } from '@deepicode/core';
 import { PROVIDERS, AGENTS, saveLastConfig } from '@deepicode/core';
 import { createBridge, timelineFromMessages, type BridgeState } from './bridge.js';
 import { DeepiMessages } from './DeepiMessages.js';
-import { DeepiPromptInput } from './DeepiPromptInput.js';
+import { DeepiPromptInput, type DeepiPromptInputHandle } from './DeepiPromptInput.js';
 import { StatusBar } from './StatusBar.js';
 import { FullscreenLayout } from './FullscreenLayout.js';
 import { isFullscreenEnvEnabled } from './fullscreen.js';
@@ -153,6 +153,7 @@ export function App({ engine, config }: AppProps) {
     bridgeRef.current.cancel();
   }, []);
   const scrollRef = useRef<any>(null);
+  const promptInputRef = useRef<DeepiPromptInputHandle>(null);
 
   const [activeProvider, setActiveProvider] = useState(config.provider ?? 'zen');
   const [activeModel, setActiveModel] = useState(config.model);
@@ -334,11 +335,15 @@ export function App({ engine, config }: AppProps) {
       {showAutocomplete && (
         <CommandAutocomplete
           query={inputText}
-          onSelect={(cmd) => { setInputText(cmd + ' '); setShowAutocomplete(false); }}
+          onSelect={(cmd) => {
+            promptInputRef.current?.writeText(cmd + ' ');
+            setShowAutocomplete(false);
+          }}
           onClose={() => setShowAutocomplete(false)}
         />
       )}
       <DeepiPromptInput
+        ref={promptInputRef}
         onSubmit={handleSubmit}
         onChange={(text) => {
           setInputText(text);
@@ -348,6 +353,7 @@ export function App({ engine, config }: AppProps) {
         disabled={!!bridgeState.permissionPrompt}
         queueCount={bridgeState.messageQueue.length}
         onCancel={handleCancel}
+        suppressHistory={showAutocomplete}
       />
       <StatusBar
         model={activeModel}

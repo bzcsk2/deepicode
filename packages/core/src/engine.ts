@@ -16,6 +16,8 @@ import type { ModeSelectorState } from "./mode-selector.js"
 import type { ThinkingMode } from "./provider-thinking.js"
 import { createModeStats, getModeSummary } from "./mode-stats.js"
 import type { ModeStats } from "./mode-stats.js"
+import { createRuntimeLoggerFromEnv, type RuntimeLogger } from "./runtime-logger.js"
+import type { ResultPersistenceConfig } from "./result-persistence.js"
 
 /**
  * ReasonixEngine 是 Deepicode 的核心引擎，负责：
@@ -46,6 +48,8 @@ export class ReasonixEngine implements CoreEngine {
   private sessionId: string
   /** 会话持久化写入器（best-effort，失败静默忽略） */
   private sessionWriter?: AsyncSessionWriter
+  /** 开发诊断日志。默认关闭，不参与业务语义。 */
+  private logger: RuntimeLogger
   /** 会话级别的 token 用量和成本统计 */
   private stats: SessionStats = {
     promptTokens: 0, completionTokens: 0,
@@ -121,14 +125,27 @@ export class ReasonixEngine implements CoreEngine {
     return { status: "queued", queueLength: this.pendingInstructionQueue.length }
   }
 
-  constructor(config: DeepicodeConfig, onStart?: () => void, sessionId?: string, customClient?: DeepSeekClient) {
+  constructor(config: DeepicodeConfig, onStart?: () => void, sessionId?: string, customClient?: DeepSeekClient, runtimeLogger?: RuntimeLogger) {
     this.config = config
     this.ctx = new ContextManager(config.maxContextRounds, config.contextWindow)
-    this.client = customClient ?? new DeepSeekClient()
     this.sessionId = sessionId ?? randomUUID()
+    this.logger = runtimeLogger ?? createRuntimeLoggerFromEnv({ sessionId: this.sessionId })
+    this.client = customClient ?? new DeepSeekClient(this.logger)
     this.currentAgent = "build"
     this.permissionEngine = new PermissionEngine()
     this.hookManager = new HookManager()
+    this.hookManager.setErrorObserver((error, phase) => {
+      if (this.logger.isEnabled("error")) {
+        this.logger.error("hook.error", error, { phase })
+      }
+    })
+    const persistConfig: ResultPersistenceConfig = {
+      sessionQuotaBytes: 50 * 1024 * 1024,
+      maxResultSizeChars: 200_000,
+      previewChars: 2_000,
+      maxFilesPerSession: 200,
+    }
+
     this.toolExecutor = new StreamingToolExecutor(
       this.tools,
       this.sessionId,
@@ -138,18 +155,21 @@ export class ReasonixEngine implements CoreEngine {
       this.requestPermission,
       (task, agentType, files) => this.delegateTask(task, agentType, files),
       (name) => this.switchAgent(name),
+      persistConfig,
+      this.logger,
     )
     this.onStart = onStart
     this.onStart?.()
 
     // 尝试初始化会话持久化（best-effort，失败则不记录）
-    const sessionPath = resolve(process.cwd(), ".deepicode", "sessions", `${this.sessionId}.jsonl`)
-    const writer = new AsyncSessionWriter(sessionPath)
-    writer.init().catch(() => {})
-    this.sessionWriter = writer
+    this.rebindSessionWriter(this.sessionId)
+    if (this.logger.isEnabled()) this.logger.info("engine.created", { provider: config.provider, model: config.model })
   }
 
   static async recover(config: DeepicodeConfig, sessionId: string): Promise<ReasonixEngine> {
+    if (!SessionLoader.validateSessionId(sessionId)) {
+      throw new Error(`Invalid session ID for recover: ${sessionId}`)
+    }
     const engine = new ReasonixEngine(config, undefined, sessionId)
     await engine._loadSessionMessages(sessionId)
     return engine
@@ -157,9 +177,25 @@ export class ReasonixEngine implements CoreEngine {
 
   /** 加载指定 session 的历史消息到当前引擎上下文 */
   async loadSession(sessionId: string): Promise<ChatMessage[]> {
+    if (this.isSubmitting) {
+      throw new Error('Cannot switch sessions while submit is active')
+    }
+    if (!SessionLoader.validateSessionId(sessionId)) {
+      throw new Error(`Invalid session ID: ${sessionId}`)
+    }
     this.sessionId = sessionId
     this.ctx.log.clear()
+    this.toolExecutor.setSessionId(sessionId)
+    this.logger = this.logger.child({ sessionId })
+    this.rebindSessionWriter(sessionId)
     return this._loadSessionMessages(sessionId)
+  }
+
+  private rebindSessionWriter(sessionId: string): void {
+    const sessionPath = resolve(process.cwd(), ".deepicode", "sessions", `${sessionId}.jsonl`)
+    const writer = new AsyncSessionWriter(sessionPath)
+    writer.init().catch(() => {})
+    this.sessionWriter = writer
   }
 
   private async _loadSessionMessages(sessionId: string): Promise<ChatMessage[]> {
@@ -193,6 +229,7 @@ export class ReasonixEngine implements CoreEngine {
 
   /** 标记中断，终止当前正在进行的请求和工具执行 */
   interrupt(): void {
+    if (this.logger.isEnabled()) this.logger.info("engine.interrupt", { isSubmitting: this.isSubmitting })
     this._interrupted = true
     this.pendingInstructionQueue = []
     this.activeAbortController?.abort()
@@ -242,6 +279,10 @@ export class ReasonixEngine implements CoreEngine {
   }
 
   async *submit(userInput: string, agentConfig?: AgentConfig): AsyncGenerator<LoopEvent> {
+    const diagnosticsEnabled = this.logger.isEnabled("error")
+    const submitStartedAt = diagnosticsEnabled ? Date.now() : 0
+    const submitId = diagnosticsEnabled ? randomUUID() : undefined
+    const submitLogger = submitId ? this.logger.child({ submitId }) : this.logger
     this._interrupted = false
     this.isSubmitting = true
     const abortController = new AbortController()
@@ -255,6 +296,7 @@ export class ReasonixEngine implements CoreEngine {
     this.ctx.startTurn()
     this.ctx.log.append({ role: "user", content: userInput })
     this.sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: this.ctx.buildMessages() })
+    if (diagnosticsEnabled) submitLogger.info("submit.start", { agent: this.currentAgent, inputLength: userInput.length })
 
     try {
       const toolSpecs: ToolSpec[] = []
@@ -302,6 +344,8 @@ export class ReasonixEngine implements CoreEngine {
         thinkingMode: this.modeSelectorState.currentMode,
         modeSelectorState: this.modeSelectorState,
         modeStats: this.modeStats,
+        logger: submitLogger,
+        submitId,
       }
 
       for await (const event of runLoop(loopOpts)) {
@@ -310,6 +354,12 @@ export class ReasonixEngine implements CoreEngine {
         void this.hookManager.runOnLoopEvent(event as unknown as Record<string, unknown>).catch(() => {})
       }
     } finally {
+      if (diagnosticsEnabled) {
+        submitLogger.info("submit.done", {
+          durationMs: Date.now() - submitStartedAt,
+          interrupted: this._interrupted,
+        })
+      }
       this.isSubmitting = false
       if (this.activeAbortController === abortController) {
         this.activeAbortController = undefined

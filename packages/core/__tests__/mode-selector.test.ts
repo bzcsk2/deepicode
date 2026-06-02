@@ -66,6 +66,7 @@ describe("AS2: Pure rule evaluator", () => {
     const state = createModeSelectorState("off")
     state.emergencyMode = true
     state.emergencyPreviousMode = "high"
+    state.lastSwitchTime = now // prevent auto-recovery from triggering immediately
     const signal: SwitchSignal = { currentMode: "off", toolCallCount: 0, textLength: 100, loopCount: 1, retryCount: 0, hasError: false }
     const d = evaluateModeSwitch(state, signal, now)
     expect(d.action).toBe("keep")
@@ -75,6 +76,7 @@ describe("AS2: Pure rule evaluator", () => {
     const state = createModeSelectorState("off")
     state.emergencyMode = true
     state.emergencyPreviousMode = "high"
+    state.lastSwitchTime = 0 // simulate no switch recorded
     resetEmergency(state, now)
     expect(state.emergencyMode).toBe(false)
     expect(state.emergencyPreviousMode).toBeNull()

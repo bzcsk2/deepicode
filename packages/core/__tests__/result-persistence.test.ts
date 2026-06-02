@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { mkdir, rm, readdir, readFile, stat } from "node:fs/promises"
 import { join } from "node:path"
-import { maybePersistResult, DEFAULT_MAX_RESULT_CHARS } from "../src/result-persistence.js"
+import { maybePersistResult, DEFAULT_MAX_RESULT_CHARS, resetSessionByteUsage, getSessionByteUsage } from "../src/result-persistence.js"
 
 const TEST_DIR = join(process.cwd(), ".deepicode", "results", "test-session")
 
@@ -100,5 +100,93 @@ describe("P4: Result Overflow Persistence", () => {
     const content = "e".repeat(DEFAULT_MAX_RESULT_CHARS + 100)
     const r = await maybePersistResult(content, "session-8", "bash")
     expect(r.persisted).toBeDefined()
+  })
+})
+
+describe("AUD-02: session quota and cleanup", () => {
+  beforeEach(async () => {
+    await rm(join(process.cwd(), ".deepicode", "results"), { recursive: true, force: true })
+    resetSessionByteUsage()
+  })
+
+  afterEach(async () => {
+    await rm(join(process.cwd(), ".deepicode", "results"), { recursive: true, force: true })
+    resetSessionByteUsage()
+  })
+
+  it("tracks byte usage across multiple persists", async () => {
+    const content = "x".repeat(DEFAULT_MAX_RESULT_CHARS + 100) // ~200k chars
+    await maybePersistResult(content, "q-session", "bash")
+    const used = getSessionByteUsage("q-session")
+    expect(used).toBeGreaterThan(0)
+
+    await maybePersistResult(content, "q-session", "grep")
+    const used2 = getSessionByteUsage("q-session")
+    expect(used2).toBeGreaterThan(used)
+  })
+
+  it("returns warning when quota exceeded", async () => {
+    const content = "y".repeat(DEFAULT_MAX_RESULT_CHARS + 100)
+    const smallQuota = { sessionQuotaBytes: 100, maxResultSizeChars: 10, previewChars: 10 }
+    const r = await maybePersistResult(content, "quota-session", "bash", smallQuota)
+    expect(r.persisted).toBeUndefined()
+    expect(r.warning).toContain("quota exceeded")
+    expect(r.content).toBe("y".repeat(10))
+  })
+
+  it("separate sessions have independent quotas", async () => {
+    const content = "z".repeat(5000) // small enough to fit under 10K quota
+    const quota = { sessionQuotaBytes: 10000, maxResultSizeChars: 100, previewChars: 50 }
+
+    // First persist for session-A and session-B should succeed
+    const rA = await maybePersistResult(content, "session-A", "bash", quota)
+    expect(rA.persisted).toBeDefined()
+    expect(getSessionByteUsage("session-A")).toBeGreaterThan(0)
+
+    const rB = await maybePersistResult(content, "session-B", "bash", quota)
+    expect(rB.persisted).toBeDefined()
+    expect(getSessionByteUsage("session-B")).toBeGreaterThan(0)
+
+    // Second persist for session-A uses remaining quota (5000 → 10000)
+    const rA2 = await maybePersistResult(content, "session-A", "bash", quota)
+    expect(rA2.persisted).toBeDefined()
+    expect(getSessionByteUsage("session-A")).toBe(10000)
+
+    // Third persist should exceed 10000 quota
+    const rA3 = await maybePersistResult(content, "session-A", "bash", quota)
+    expect(rA3.warning).toContain("quota exceeded")
+    expect(rA3.persisted).toBeUndefined()
+  })
+
+  it("cleans up old files when exceeding max count", async () => {
+    const content = "c".repeat(DEFAULT_MAX_RESULT_CHARS + 100)
+    const config = { maxFilesPerSession: 3 }
+
+    // Write 5 files with brief delays for distinct mtimes
+    for (let i = 0; i < 5; i++) {
+      await maybePersistResult(content, "cleanup-session", "bash", config)
+      await new Promise(r => setTimeout(r, 50))
+    }
+
+    // Wait for async cleanup
+    await new Promise(r => setTimeout(r, 200))
+
+    const dir = join(process.cwd(), ".deepicode", "results", "cleanup-session")
+    let files: string[]
+    try {
+      files = await readdir(dir)
+    } catch {
+      files = []
+    }
+    expect(files.length).toBeLessThanOrEqual(4)
+    expect(files.length).toBeGreaterThan(0)
+  })
+
+  it("resetSessionByteUsage clears tracking", async () => {
+    const content = "r".repeat(DEFAULT_MAX_RESULT_CHARS + 100)
+    await maybePersistResult(content, "reset-me", "bash")
+    expect(getSessionByteUsage("reset-me")).toBeGreaterThan(0)
+    resetSessionByteUsage("reset-me")
+    expect(getSessionByteUsage("reset-me")).toBe(0)
   })
 })

@@ -2,6 +2,7 @@ export interface RepairResult {
   success: boolean
   args: Record<string, unknown>
   method: string
+  partial?: boolean
 }
 
 export function repairToolArguments(raw: string): RepairResult {
@@ -12,7 +13,10 @@ export function repairToolArguments(raw: string): RepairResult {
   if (s2.success) return { success: true, args: s2.args, method: "truncation" }
 
   const s3 = storm(raw)
-  if (s3.success) return { success: true, args: s3.args, method: "storm" }
+  if (s3.success) {
+    // AUD-08: partial recovery with multiple KV pairs is suspicious — flag it
+    return { success: true, args: s3.args, method: "storm", partial: Object.keys(s3.args).length > 1 }
+  }
 
   return { success: false, args: {}, method: "all-failed" }
 }
@@ -97,9 +101,14 @@ function truncate(raw: string): { success: boolean; args: Record<string, unknown
 /** Stage 3: Storm — last resort patterns */
 function storm(raw: string): { success: boolean; args: Record<string, unknown> } {
   // 3a: if it looks like a simple key-value, construct manually
-  const kvMatch = raw.match(/"(\w+)":\s*"([^"]+)"/)
-  if (kvMatch) {
-    return { success: true, args: { [kvMatch[1]]: kvMatch[2] } }
+  // AUD-08: Only accept when there is exactly ONE KV pair
+  const allKvMatches = [...raw.matchAll(/"(\w+)":\s*"([^"]*)"/g)]
+  if (allKvMatches.length === 1) {
+    return { success: true, args: { [allKvMatches[0][1]]: allKvMatches[0][2] } }
+  }
+  if (allKvMatches.length >= 2) {
+    // Multiple KV pairs — return partial state (but don't execute)
+    return { success: true, args: Object.fromEntries(allKvMatches.map(m => [m[1], m[2]])) }
   }
 
   // 3b: empty object literal

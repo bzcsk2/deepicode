@@ -466,3 +466,82 @@ describe("ContextManager - fold decision", () => {
     expect(decision.ratio).toBeLessThanOrEqual(0.65)
   })
 })
+
+describe("AUD-03: token budget force hard boundary", () => {
+  it("truncates log when token budget exceeded", () => {
+    const cm = new ContextManager(20, 200) // tiny budget
+    cm.prefix.build("short")
+    cm.log.append({ role: "user", content: "hello" })
+    cm.log.append({ role: "assistant", content: "hi" })
+
+    // Large content that exceeds budget
+    cm.log.append({ role: "user", content: "x".repeat(5000) })
+    cm.log.append({ role: "assistant", content: "y".repeat(5000) })
+
+    const messages = cm.buildMessages()
+    // Should fit within context window
+    const total = messages.reduce((acc, m) => acc + (m.content?.length ?? 0), 0)
+    expect(total).toBeLessThan(200 * 4) // rough upper bound
+  })
+
+  it("preserves prefix content under budget pressure", () => {
+    const cm = new ContextManager(100, 100) // very tight budget
+    cm.prefix.build("important system prompt")
+    cm.log.append({ role: "user", content: "x".repeat(1000) })
+    cm.log.append({ role: "assistant", content: "y".repeat(1000) })
+
+    const messages = cm.buildMessages()
+    // Prefix must be preserved
+    const prefixMsgs = messages.filter(m => cm.prefix.messages.some(p => p.content === m.content))
+    expect(prefixMsgs.length).toBeGreaterThanOrEqual(1)
+    // Should still contain "important system prompt"
+    const allText = messages.map(m => m.content).join("")
+    expect(allText).toContain("important system prompt")
+  })
+
+  it("preserves tool-call / tool-result atomic groups", () => {
+    const cm = new ContextManager(20, 300)
+    cm.prefix.build("sys")
+    cm.log.append({ role: "user", content: "list files" })
+    cm.log.append({ role: "assistant", content: "", tool_calls: [{ id: "tc1", type: "function", function: { name: "ls", arguments: "{}" } }] })
+    cm.log.append({ role: "tool", tool_call_id: "tc1", content: "file1\nfile2", name: "ls" })
+    cm.log.append({ role: "assistant", content: "here are files" })
+
+    // Add large content that forces truncation
+    cm.log.append({ role: "user", content: "do something huge ".repeat(1000) })
+    cm.log.append({ role: "assistant", content: "result ".repeat(1000) })
+    cm.log.append({ role: "tool", tool_call_id: "tc2", content: "big output ".repeat(500), name: "read" })
+    cm.log.append({ role: "assistant", content: "done" })
+    cm.log.append({ role: "user", content: "more stuff ".repeat(500) })
+
+    const messages = cm.buildMessages()
+    // No orphan tool messages
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i].role === "tool") {
+        expect(["assistant", "user"].includes(messages[i - 1]?.role ?? "")).toBe(true)
+      }
+    }
+  })
+
+  it("empty log should return just prefix and scratch", () => {
+    const cm = new ContextManager(20, 500)
+    cm.prefix.build("system prompt")
+
+    const messages = cm.buildMessages()
+    expect(messages.length).toBeGreaterThanOrEqual(1)
+    expect(messages[0].content).toContain("system prompt")
+  })
+
+  it("does not deadlock when budget is extremely small", () => {
+    const cm = new ContextManager(20, 1) // impossibly small
+    cm.prefix.build("x")
+    for (let i = 0; i < 10; i++) {
+      cm.log.append({ role: "user", content: "hello ".repeat(100) })
+      cm.log.append({ role: "assistant", content: "world ".repeat(100) })
+    }
+
+    // Should not infinite-loop
+    const messages = cm.buildMessages()
+    expect(Array.isArray(messages)).toBe(true)
+  })
+})

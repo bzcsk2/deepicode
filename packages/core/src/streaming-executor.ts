@@ -17,6 +17,10 @@ export class StreamingToolExecutor {
   private resultPersistenceConfig?: ResultPersistenceConfig
   private logger: RuntimeLogger
 
+  setSessionId(id: string): void {
+    this.sessionId = id
+  }
+
   constructor(
     tools: Map<string, AgentTool>,
     sessionId: string,
@@ -219,6 +223,12 @@ export class StreamingToolExecutor {
       if (!repaired.success) {
         const result = makeToolError(`Invalid arguments for ${tc.function.name}: failed all repair stages`)
         if (diagnosticsEnabled) logger.warn("tool.arguments.invalid", { durationMs: Date.now() - startedAt })
+        return { event: makeErrorEvent(result, tc.function.name, index), result }
+      }
+      if (repaired.partial) {
+        // AUD-08: Reject partial repairs — storm() with >1 KV pair is unreliable
+        const result = makeToolError(`Partial argument repair for ${tc.function.name}: ${JSON.stringify(repaired.args)} — cannot determine complete arguments, skipping`)
+        if (diagnosticsEnabled) logger.warn("tool.arguments.partial", { durationMs: Date.now() - startedAt })
         return { event: makeErrorEvent(result, tc.function.name, index), result }
       }
       args = repaired.args

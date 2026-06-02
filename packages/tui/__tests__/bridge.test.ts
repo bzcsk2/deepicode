@@ -211,18 +211,15 @@ describe('TUI bridge turn state', () => {
     expect(harness.state.isLoading).toBe(false);
   });
 
-  it('P0-6: TUI running input goes to messageQueue, serial submit not lost', async () => {
+  it('P0-6: TUI running input goes to enqueueInstruction, not lost', async () => {
     let releaseFirst!: () => void;
     const firstReleased = new Promise<void>(r => { releaseFirst = r; });
     const engine = mockEngine([
       async function* () {
         yield { role: 'assistant_delta', content: 'working...' };
+        yield { role: 'status', content: 'instruction_injected', metadata: { kind: 'instruction_injected', queueLength: 0, turnCount: 1 } };
         await firstReleased;
-        yield { role: 'assistant_final', content: 'done' };
-        yield { role: 'done' };
-      },
-      async function* () {
-        yield { role: 'assistant_final', content: 'second response' };
+        yield { role: 'assistant_final', content: 'done with both' };
         yield { role: 'done' };
       },
     ]);
@@ -233,17 +230,18 @@ describe('TUI bridge turn state', () => {
     const first = bridge.submit('first message');
     await waitFor(() => engine.submitted.length === 1);
 
-    // Second submit arrives while first is running — goes to messageQueue
+    // Second submit arrives while first is running — goes to enqueueInstruction
     bridge.submit('second message');
-    expect(harness.state.messageQueue).toEqual(['second message']);
+    expect(harness.state.messageQueue).toEqual([]);
+    expect(engine.enqueuedInstructions).toEqual(['second message']);
     expect(engine.submitted).toEqual(['first message']);
 
-    // Release first, second should auto-submit
+    // Release first submit (which processes both messages)
     releaseFirst();
-    await first;
-    await waitFor(() => engine.submitted.length === 2 && harness.state.isLoading === false);
+    await waitFor(() => harness.state.isLoading === false);
 
-    expect(engine.submitted).toEqual(['first message', 'second message']);
+    // Both messages were handled in one submit via injection
+    expect(engine.submitted).toEqual(['first message']);
     expect(harness.state.messageQueue).toEqual([]);
   });
 

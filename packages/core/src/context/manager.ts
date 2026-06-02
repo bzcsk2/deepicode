@@ -2,7 +2,7 @@ import type { ChatMessage } from "../types.js"
 import { AppendOnlyLog } from "./append-log.js"
 import { ImmutablePrefix } from "./immutable.js"
 import { VolatileScratch } from "./scratch.js"
-import { getFoldDecision } from "./token-estimator.js"
+import { getFoldDecision, estimateTokens } from "./token-estimator.js"
 import { TokenizerPool } from "./tokenizer-pool.js"
 import type { FoldDecision } from "./token-estimator.js"
 
@@ -68,29 +68,73 @@ export class ContextManager {
 
     // 截断：保留最近 maxRounds 轮对话（按 user 消息计数）
     if (this.maxRounds > 0) {
-      const userIdx: number[] = []
-      for (let i = 0; i < log.length; i++) {
-        if (log[i].role === "user") userIdx.push(i)
-      }
-      if (userIdx.length > this.maxRounds) {
-        let cutFrom = userIdx[userIdx.length - this.maxRounds]
-        // 向前扫描，确保不切断 tool 消息组（孤立 tool 消息会导致 API 400）
-        for (let i = cutFrom; i < log.length; i++) {
-          if (log[i].role === "tool" && (i === 0 || log[i - 1].role !== "assistant")) {
-            while (i < log.length && log[i].role !== "user") i++
-            cutFrom = i
-            break
-          }
-        }
-        log = log.slice(cutFrom)
-      }
+      log = this.truncateByRounds(log)
     }
+
+    // AUD-03: Token budget enforcement — mechanical fallback when over budget
+    log = this.truncateToBudget(log)
 
     return [
       ...this.prefix.messages,
       ...log,
       ...this.scratch.messages,
     ]
+  }
+
+  /** Round-based truncation preserving tool call atomicity */
+  private truncateByRounds(log: ChatMessage[]): ChatMessage[] {
+    const userIdx: number[] = []
+    for (let i = 0; i < log.length; i++) {
+      if (log[i].role === "user") userIdx.push(i)
+    }
+    if (userIdx.length <= this.maxRounds) return log
+
+    let cutFrom = userIdx[userIdx.length - this.maxRounds]
+    // 向前扫描，确保不切断 tool 消息组（孤立 tool 消息会导致 API 400）
+    for (let i = cutFrom; i < log.length; i++) {
+      if (log[i].role === "tool" && (i === 0 || log[i - 1].role !== "assistant")) {
+        while (i < log.length && log[i].role !== "user") i++
+        cutFrom = i
+        break
+      }
+    }
+    return log.slice(cutFrom)
+  }
+
+  /** AUD-03: Token-budget-based fallback — removes oldest rounds until under budget */
+  private truncateToBudget(log: ChatMessage[]): ChatMessage[] {
+    if (log.length === 0) return log
+
+    // Estimate prefix + scratch overhead as baseline
+    const baseline = estimateTokens([...this.prefix.messages, ...this.scratch.messages])
+
+    let current = [...log]
+    let estimated = estimateTokens(current)
+
+    while (estimated + baseline > this.contextWindow && current.length > 0) {
+      // Find the first user message boundary to remove one round
+      const firstUserIdx = current.findIndex(m => m.role === "user")
+      if (firstUserIdx < 0) break
+
+      // Remove everything up to and including this user's round
+      // Find where this round ends (next user message or end)
+      let roundEnd = current.length
+      for (let i = firstUserIdx + 1; i < current.length; i++) {
+        if (current[i].role === "user") {
+          roundEnd = i
+          break
+        }
+        if (current[i].role === "tool" && (i + 1 >= current.length || current[i + 1].role === "user")) {
+          roundEnd = i + 1
+          break
+        }
+      }
+
+      current = current.slice(roundEnd)
+      estimated = estimateTokens(current)
+    }
+
+    return current
   }
 
   /** 新轮次开始前调用：清空 scratch 暂存区 */

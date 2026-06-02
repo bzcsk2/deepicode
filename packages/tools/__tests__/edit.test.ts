@@ -170,16 +170,18 @@ describe("fuzzyReplaceOnce", () => {
     expect(result!.edited).toContain("return 42")
   })
 
-  it("hashAnchoredReplaceOnce should replace first occurrence when old_string appears multiple times", async () => {
+  it("should reject ambiguous old_string with multiple occurrences in file", async () => {
     const dir = tempDir()
     const file = join(dir, "mult.txt")
     writeFileSync(file, "keep A\ncommon\nkeep B\ncommon\nkeep C")
 
-    const res = await hashAnchoredReplaceOnce(file, "common", "REPLACED")
-    expect(res).not.toBeNull()
-    expect(res!.replacedCount).toBe(1)
-    const content = readFileSync(file, "utf-8")
-    expect(content).toBe("keep A\nREPLACED\nkeep B\ncommon\nkeep C")
+    const editTool = createEditTool()
+    const result = await editTool.execute(
+      { path: file, old_string: "common", new_string: "REPLACED" },
+      { cwd: dir, sessionId: "test", signal: new AbortController().signal } as any,
+    )
+    const parsed = JSON.parse(result.content)
+    expect(parsed.error).toContain("appears multiple times")
     await rm(dir, { recursive: true })
   })
 

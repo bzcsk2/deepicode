@@ -70,6 +70,7 @@ export function evaluateModeSwitch(
   if (signal.hasError && signal.currentMode !== "off") {
     state.emergencyMode = true
     state.emergencyPreviousMode = signal.currentMode
+    state.lastSwitchTime = now
     state.errorHistory.push(now)
     state.errorHistory = state.errorHistory.filter(t => now - t < ERROR_WINDOW_MS)
     return { action: "switch", target: "off", reason: "emergency_error_disable_thinking" }

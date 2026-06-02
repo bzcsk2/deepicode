@@ -29,6 +29,14 @@ function restoreLineEndings(content: string, ending: "\r\n" | "\n"): string {
   return content
 }
 
+/** Count occurrences of substring in text. */
+function countOccurrences(text: string, sub: string): number {
+  let count = 0
+  let idx = -1
+  while ((idx = text.indexOf(sub, idx + 1)) >= 0) count++
+  return count
+}
+
 export function createEditTool(): AgentTool {
   return {
     name: "edit",
@@ -92,9 +100,14 @@ export function createEditTool(): AgentTool {
 
       // Try hash-anchored edit on normalized content (in-memory, acceptable for ≤10MB)
       if (normalizedOld) {
-        const idx = normalizedContent.indexOf(normalizedOld)
-        if (idx >= 0) {
-          const result = normalizedContent.slice(0, idx) + normalizedNew + normalizedContent.slice(idx + normalizedOld.length)
+        // AUD-05: Uniqueness check — reject if old_string appears multiple times
+        const firstIdx = normalizedContent.indexOf(normalizedOld)
+        const lastIdx = normalizedContent.lastIndexOf(normalizedOld)
+        if (firstIdx >= 0 && firstIdx !== lastIdx) {
+          return { content: safeStringify({ error: `old_string appears multiple times (${countOccurrences(normalizedContent, normalizedOld)}). Provide more surrounding context to uniquely identify the target block.`, path: args.path }), isError: true }
+        }
+        if (firstIdx >= 0) {
+          const result = normalizedContent.slice(0, firstIdx) + normalizedNew + normalizedContent.slice(firstIdx + normalizedOld.length)
           await writeFile(path, restoreLineEndings(result, lineEnding), "utf-8")
           return { content: safeStringify({ path: args.path, replaced: 1, method: "hash_anchored", cwd: ctx.cwd }), isError: false }
         }

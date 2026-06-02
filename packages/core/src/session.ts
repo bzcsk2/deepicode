@@ -20,8 +20,24 @@ export interface SessionSummary {
 export class SessionLoader {
   static sessionDir = resolve(process.cwd(), ".deepicode", "sessions")
 
+  static validateSessionId(id: string): boolean {
+    if (!id || typeof id !== "string") return false
+    if (id.length > 128 || id.length < 1) return false
+    if (/[\x00-\x1f\x7f/\\:?*"<>|]/.test(id)) return false
+    if (id === "." || id === "..") return false
+    if (/\.\./.test(id)) return false
+    return true
+  }
+
+  private static safePath(sessionId: string): string {
+    if (!this.validateSessionId(sessionId)) {
+      throw new Error(`Invalid session ID: ${sessionId}`)
+    }
+    return resolve(this.sessionDir, `${sessionId}.jsonl`)
+  }
+
   static async read(sessionId: string): Promise<ChatMessage[]> {
-    const path = resolve(this.sessionDir, `${sessionId}.jsonl`)
+    const path = this.safePath(sessionId)
     let raw: string
     try {
       raw = await readFile(path, "utf-8")
@@ -54,28 +70,28 @@ export class SessionLoader {
     for (const f of files) {
       if (!f.endsWith(".jsonl")) continue
       const id = f.slice(0, -6)
+      if (!this.validateSessionId(id)) continue
       const path = resolve(this.sessionDir, f)
       try {
         const raw = await readFile(path, "utf-8")
         const lines = raw.trim().split("\n")
         if (lines.length === 0) continue
-        const firstRec = JSON.parse(lines[0]) as SessionRecord
         let messageCount = 0
         let userMessages = 0
         let inputTokens = 0
         let outputTokens = 0
-        // scan lines for stats — only take the LAST stats record (cumulative)
+        let lastTs = 0
+        // scan for last valid records
         let lastInputTokens = 0
         let lastOutputTokens = 0
         for (const line of lines) {
           try {
             const rec = JSON.parse(line) as SessionRecord
+            if (rec.ts > lastTs) lastTs = rec.ts
             if (rec.type === "messages" && Array.isArray(rec.payload)) {
-              messageCount++
-              userMessages = 0
-              for (const m of rec.payload as ChatMessage[]) {
-                if (m.role === "user") userMessages++
-              }
+              const msgs = rec.payload as ChatMessage[]
+              messageCount = msgs.length
+              userMessages = msgs.filter(m => m.role === "user").length
             }
             if (rec.type === "stats" && typeof rec.payload === "object" && rec.payload) {
               const s = rec.payload as Record<string, unknown>
@@ -86,7 +102,7 @@ export class SessionLoader {
         }
         inputTokens = lastInputTokens
         outputTokens = lastOutputTokens
-        entries.push({ id, ts: firstRec.ts, messageCount, userMessages, inputTokens, outputTokens })
+        entries.push({ id, ts: lastTs, messageCount, userMessages, inputTokens, outputTokens })
       } catch { continue }
     }
     entries.sort((a, b) => b.ts - a.ts)

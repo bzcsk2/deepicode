@@ -102,7 +102,11 @@ export function createBridge(
       }
       if (result.status === 'full') {
         // Queue full — fall back to messageQueue so no message is lost
-        setState(prev => ({ ...prev, messageQueue: [...prev.messageQueue, text] }));
+        setState(prev => ({
+          ...prev,
+          pendingInstructionCount: result.queueLength,
+          messageQueue: [...prev.messageQueue, text],
+        }));
         return;
       }
       if (result.status === 'ignored') return;
