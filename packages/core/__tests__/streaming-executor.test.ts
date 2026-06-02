@@ -552,3 +552,48 @@ describe("P5.5: tool progress via reportProgress", () => {
     expect(events).toHaveLength(4) // start, running, tool, done
   })
 })
+
+describe("CL-20: Shared tool progress", () => {
+  it("yields intermediate progress for shared tools", async () => {
+    const { StreamingToolExecutor } = await import("../src/streaming-executor.js")
+    const sharedTool: AgentTool = {
+      name: "slow", description: "", parameters: { type: "object", properties: {} },
+      concurrency: "shared", approval: "read",
+      async execute(_args, ctx) {
+        ctx.reportProgress?.({ content: "step1" })
+        await new Promise(r => setTimeout(r, 10))
+        ctx.reportProgress?.({ content: "step2" })
+        return { content: "done", isError: false }
+      },
+    }
+    const tools = new Map<string, AgentTool>([["slow", sharedTool]])
+    const executor = new StreamingToolExecutor(tools, "test", process.cwd())
+    const toolCalls = [
+      { id: "1", type: "function" as const, function: { name: "slow", arguments: "{}" } },
+    ]
+    const events: LoopEvent[] = []
+    for await (const e of executor.run(toolCalls, new AbortController().signal, () => {})) { events.push(e) }
+    const progress = events.filter(e => e.role === "tool_progress" && e.content !== "running" && e.content !== "done")
+    expect(progress.length).toBeGreaterThanOrEqual(2)
+    expect(progress[0].content).toBe("step1")
+    expect(progress[1].content).toBe("step2")
+  })
+
+  it("shared tool without reportProgress still works", async () => {
+    const { StreamingToolExecutor } = await import("../src/streaming-executor.js")
+    const simpleTool: AgentTool = {
+      name: "simple", description: "", parameters: { type: "object", properties: {} },
+      concurrency: "shared", approval: "read",
+      async execute() { return { content: "ok", isError: false } },
+    }
+    const tools = new Map<string, AgentTool>([["simple", simpleTool]])
+    const executor = new StreamingToolExecutor(tools, "test", process.cwd())
+    const toolCalls = [
+      { id: "1", type: "function" as const, function: { name: "simple", arguments: "{}" } },
+    ]
+    const events: LoopEvent[] = []
+    for await (const e of executor.run(toolCalls, new AbortController().signal, () => {})) { events.push(e) }
+    const done = events.filter(e => e.role === "tool_progress" && e.content === "done")
+    expect(done).toHaveLength(1)
+  })
+})

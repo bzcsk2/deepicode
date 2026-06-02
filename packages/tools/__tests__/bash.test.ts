@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -117,7 +117,7 @@ describe("bash tool", () => {
     const r = await tool.execute({ command: "for i in $(seq 1 1000); do echo 'line ' $i; done", max_chars: 100 }, ctx)
     expect(r.isError).toBe(false)
     const p = JSON.parse(r.content as string)
-    expect(p.stdout).toContain("... [truncated")
+    expect(p.stdout).toMatch(/\.\.\. \[(truncated|dropped)/)
   })
 
   it("should detect binary output and emit encoding_warning", async () => {
@@ -128,5 +128,69 @@ describe("bash tool", () => {
     if (p.encoding_warning) {
       expect(p.encoding_warning).toContain("binary")
     }
+  })
+})
+
+describe("CL-21: Bash bounded output", () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "deepicode-cl21-"))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it("drops earlier chars when output exceeds max_chars", async () => {
+    const { createBashTool } = await import("../src/shell-exec.js")
+    const tool = createBashTool()
+    const ctx = { cwd: dir, signal: new AbortController().signal } as any
+    const r = await tool.execute({ command: "for i in $(seq 1 1000); do echo \"line $i\"; done", max_chars: 5000 }, ctx)
+    const p = JSON.parse(r.content as string)
+    expect(p.stdout).toMatch(/\.\.\. \[(dropped|truncated)/)
+    expect(p.stdout.length).toBeLessThan(6000)
+  })
+
+  it("returns normal output when under limit", async () => {
+    const { createBashTool } = await import("../src/shell-exec.js")
+    const tool = createBashTool()
+    const ctx = { cwd: dir, signal: new AbortController().signal } as any
+    const r = await tool.execute({ command: "echo hello", max_chars: 100000 }, ctx)
+    const p = JSON.parse(r.content as string)
+    expect(p.stdout.trim()).toBe("hello")
+    expect(p.exitCode).toBe(0)
+  })
+
+  it("sets non-zero exitCode on command failure", async () => {
+    const { createBashTool } = await import("../src/shell-exec.js")
+    const tool = createBashTool()
+    const ctx = { cwd: dir, signal: new AbortController().signal } as any
+    const r = await tool.execute({ command: "exit 42" }, ctx)
+    const p = JSON.parse(r.content as string)
+    expect(p.exitCode).toBe(42)
+    expect(r.isError).toBe(true)
+  })
+
+  it("timedOut is true when command exceeds timeout", async () => {
+    const { createBashTool } = await import("../src/shell-exec.js")
+    const tool = createBashTool()
+    const ctx = { cwd: dir, signal: new AbortController().signal } as any
+    const r = await tool.execute({ command: "sleep 5", timeout_ms: 500 }, ctx)
+    const p = JSON.parse(r.content as string)
+    expect(p.timedOut).toBe(true)
+    expect(p.exitCode).toBe(124)
+  })
+
+  it("AbortSignal kills running command", async () => {
+    const { createBashTool } = await import("../src/shell-exec.js")
+    const tool = createBashTool()
+    const ac = new AbortController()
+    const ctx = { cwd: dir, signal: ac.signal } as any
+    const p = tool.execute({ command: "sleep 10", timeout_ms: 30000 }, ctx)
+    setTimeout(() => ac.abort(), 200)
+    const r = await p
+    const parsed = JSON.parse(r.content as string)
+    expect(parsed.exitCode).toBe(130)
   })
 })

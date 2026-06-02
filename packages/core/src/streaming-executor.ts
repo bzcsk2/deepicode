@@ -105,9 +105,13 @@ export class StreamingToolExecutor {
 
       // P1: Start executing tools BEFORE yielding events, so tools that complete
       // synchronously finish before the consumer can abort.
-      const pending = allowedBatch.map(({ tc, index }) =>
-        exec.executeToolResult(tc, index, signal, logger).then((r) => ({ index, tc, ...r })) as Promise<{ index: number; tc: ToolCall; event: LoopEvent; result: ToolResult }>,
-      )
+      // P5.5/CL-20: Collect progress from shared tools via per-tool buffers
+      const progressBuffers = new Map<number, ToolProgressUpdate[]>()
+      const pending = allowedBatch.map(({ tc, index }) => {
+        const buf: ToolProgressUpdate[] = []
+        progressBuffers.set(index, buf)
+        return exec.executeToolResult(tc, index, signal, logger, (update) => { buf.push(update) }).then((r) => ({ index, tc, ...r })) as Promise<{ index: number; tc: ToolCall; event: LoopEvent; result: ToolResult }>
+      })
 
       for (const { tc, index } of allowedBatch) {
         yield { role: "tool_start", toolName: tc.function.name, toolCallIndex: index }
@@ -130,6 +134,16 @@ export class StreamingToolExecutor {
         }
       }
       settled_results.sort((a, b) => a.index - b.index)
+
+      // CL-20: Flush progress buffers before final events
+      for (const { index } of settled_results) {
+        const buf = progressBuffers.get(index)
+        if (buf) {
+          for (const p of buf) {
+            yield { role: "tool_progress", toolName: "", toolCallIndex: index, content: p.content, metadata: p.metadata }
+          }
+        }
+      }
 
       for (const { index, tc, event, result } of settled_results) {
         settle(tc, index, result)

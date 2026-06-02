@@ -6,7 +6,7 @@ import { safeStringify, hasBinaryEncoding } from "./safe-stringify.js"
 import { isSensitive } from "./sensitive.js"
 
 const DENY_PATTERNS = [
-  /\brm\s+(?:-[A-Za-z]*r[A-Za-z]*\s+.*\/\*|.*-[A-Za-z]*r[A-Za-z]*\s+\/)/, // catch rm -rf / or rm -rf /*
+  /\brm\s+(?:-[A-Za-z]*r[A-Za-z]*\s+.*\/\*|.*-[A-Za-z]*r[A-Za-z]*\s+\/)/,
   /\bsudo\b/,
   /\bmkfs\b/,
   /\bdd\s+if=/,
@@ -50,8 +50,6 @@ export function createBashTool(): AgentTool {
       if (denied) {
         return { content: safeStringify({ error: `Command denied: matches dangerous pattern /${denied}/` }), isError: true }
       }
-      // Extract file paths from command and check sensitive files
-      // Match files with extensions OR dotfiles (like .env, .npmrc) OR known sensitive filenames
       const pathRe = /\b([\w./-]*(?:\.\w{1,10}))\b|\b([\w./-]*\/?\.[\w.-]+)\b|\b([\w./-]*(?:id_rsa|id_ed25519|credentials\.json|service-account\.json|token\.json))\b/g
       let pathMatch: RegExpExecArray | null
       while ((pathMatch = pathRe.exec(command)) !== null) {
@@ -73,6 +71,54 @@ export function createBashTool(): AgentTool {
   }
 }
 
+interface BoundedBuffer {
+  text: string
+  max: number
+  dropped: number
+}
+
+function pushBounded(buf: BoundedBuffer, chunk: string): void {
+  buf.text += chunk
+  if (buf.text.length > buf.max * 2) {
+    const excess = buf.text.length - buf.max
+    buf.text = buf.text.slice(excess)
+    buf.dropped += excess
+  }
+}
+
+function finalizeBounded(buf: BoundedBuffer): { text: string; dropped: number } {
+  if (buf.dropped > 0) {
+    return {
+      text: buf.text.slice(-buf.max) + `\n... [dropped ${buf.dropped} earlier chars]`,
+      dropped: buf.dropped,
+    }
+  }
+  if (buf.text.length > buf.max) {
+    return {
+      text: buf.text.slice(-buf.max) + `\n... [truncated: ${buf.text.length - buf.max} more chars]`,
+      dropped: buf.text.length - buf.max,
+    }
+  }
+  return { text: buf.text, dropped: 0 }
+}
+
+// Rate-limiter: only emit progress if content changed significantly or 200ms elapsed
+function createProgressThrottle(report?: (update: ToolProgressUpdate) => void): (update: ToolProgressUpdate) => void {
+  if (!report) return () => {}
+  let lastContent = ""
+  let lastTs = 0
+  const MIN_INTERVAL = 200
+  return (update) => {
+    const now = Date.now()
+    // Always emit if content changed and enough time elapsed
+    if (update.content !== lastContent && now - lastTs >= MIN_INTERVAL) {
+      lastContent = update.content
+      lastTs = now
+      report(update)
+    }
+  }
+}
+
 async function runBash(command: string, cwd: string, timeoutMs: number, maxChars: number, signal?: AbortSignal, reportProgress?: (update: ToolProgressUpdate) => void): Promise<{
   command: string
   cwd: string
@@ -83,22 +129,22 @@ async function runBash(command: string, cwd: string, timeoutMs: number, maxChars
 }> {
   return await new Promise((resolve, reject) => {
     const isWindows = os.platform() === "win32"
-    // Use detached to create a process group on Unix, so we can kill children (zombies)
     const child = spawn("bash", ["-c", command], {
       cwd, detached: !isWindows,
       env: { ...process.env, GIT_EDITOR: "true", GIT_SEQUENCE_EDITOR: "true", EDITOR: "true" },
     })
-    
-    let stdout = ""
-    let stderr = ""
+
+    const stdoutBuf: BoundedBuffer = { text: "", max: maxChars, dropped: 0 }
+    const stderrBuf: BoundedBuffer = { text: "", max: maxChars, dropped: 0 }
     let timedOut = false
     let done = false
     let sigtermTimer: ReturnType<typeof setTimeout> | null = null
 
+    const report = createProgressThrottle(reportProgress)
+
     const killChild = (graceful = false) => {
       try {
         if (graceful) {
-          // SIGTERM first, then SIGKILL after grace period
           if (!isWindows && child.pid) {
             process.kill(-child.pid, "SIGTERM")
           } else {
@@ -127,18 +173,34 @@ async function runBash(command: string, cwd: string, timeoutMs: number, maxChars
       }
     }
 
-    const finish = (exitCode: number) => {
-      if (done) return
-      done = true
+    const cleanup = () => {
       if (sigtermTimer) {
         clearTimeout(sigtermTimer)
         sigtermTimer = null
       }
+      if (signal) {
+        signal.removeEventListener("abort", onAbort)
+      }
+    }
+
+    const onAbort = () => {
+      clearTimeout(timer)
+      cleanup()
+      killChild()
+      finish(130)
+    }
+
+    const finish = (exitCode: number) => {
+      if (done) return
+      done = true
+      cleanup()
+      const stdoutFinal = finalizeBounded(stdoutBuf)
+      const stderrFinal = finalizeBounded(stderrBuf)
       resolve({
         command,
         cwd,
-        stdout: truncate(stdout, maxChars),
-        stderr: truncate(stderr, maxChars),
+        stdout: stdoutFinal.text,
+        stderr: stderrFinal.text,
         exitCode,
         timedOut,
       })
@@ -153,40 +215,32 @@ async function runBash(command: string, cwd: string, timeoutMs: number, maxChars
     if (signal) {
       if (signal.aborted) {
         clearTimeout(timer)
-        if (sigtermTimer) clearTimeout(sigtermTimer)
+        cleanup()
         killChild()
         finish(130)
         return
       }
-      signal.addEventListener("abort", () => {
-        clearTimeout(timer)
-        if (sigtermTimer) clearTimeout(sigtermTimer)
-        killChild()
-        finish(130)
-      }, { once: true })
+      signal.addEventListener("abort", onAbort, { once: true })
     }
 
     child.stdout.on("data", (b) => {
-      stdout += String(b)
-      reportProgress?.({ content: `stdout: ${String(b).slice(-200)}` })
+      const chunk = String(b)
+      pushBounded(stdoutBuf, chunk)
+      report({ content: `stdout: ${chunk.slice(-200)}` })
     })
     child.stderr.on("data", (b) => {
-      stderr += String(b)
-      reportProgress?.({ content: `stderr: ${String(b).slice(-200)}` })
+      const chunk = String(b)
+      pushBounded(stderrBuf, chunk)
+      report({ content: `stderr: ${chunk.slice(-200)}` })
     })
     child.on("error", (e) => {
       clearTimeout(timer)
-      if (sigtermTimer) clearTimeout(sigtermTimer)
-      reject(e)
+      cleanup()
+      reject(e) // spawn error — reject, not resolve
     })
     child.on("close", (code) => {
       clearTimeout(timer)
       finish(code ?? 0)
     })
   })
-}
-
-function truncate(s: string, max: number): string {
-  if (s.length <= max) return s
-  return s.slice(0, max) + `\n... [truncated: ${s.length - max} more chars]`
 }
