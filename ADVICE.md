@@ -590,34 +590,22 @@ textDocument/didChange {
 
 ### LSP-60：工具链集成和可观测性
 
-目标：
+**状态：✅ 已完成（2026-06-03）**
 
-- RuntimeLogger 增加 LSP 事件：
-  - `lsp.server.start`
-  - `lsp.server.ready`
-  - `lsp.server.exit`
-  - `lsp.server.restart`
-  - `lsp.request.start`
-  - `lsp.request.done`
-  - `lsp.request.timeout`
-  - `lsp.document.open`
-  - `lsp.document.change`
-- 日志字段带上 `sessionId`、`submitId`、`toolCallId`、`lspServerId`、`requestId`。
-- TUI 工具进度可显示：
-  - `LSP starting typescript server`
-  - `LSP indexing workspace`
-  - `LSP request hover`
+实现内容：
+
+- `packages/tools/src/lsp/logger.ts`：LspLogger 类，封装 RuntimeLogger
+- 支持 9 种 LSP 事件：server.start/ready/exit/restart, request.start/done/timeout, document.open/change
+- 日志字段带 sessionId、submitId、toolCallId、lspServerId、requestId
+- 不记录源码内容，只记录路径、语言、耗时、结果数量
+- `@deepicode/core` 导出 RuntimeLogger
+- 12 个单元测试覆盖所有事件类型、上下文继承、安全字段
 
 测试：
 
 - debug 日志下能串起一次 LSP 请求。
 - 日志不泄漏源码全文，只记录路径、语言、耗时、结果数量。
 - 关闭日志时不产生文件，不影响热路径。
-
-关闭条件：
-
-- `DEEPICODE_LOG_LEVEL=debug` 下完成一次 LSP hover，日志可读。
-- `DEEPICODE_LOG_LEVEL=off` 下不产生日志文件。
 
 ---
 

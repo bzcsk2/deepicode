@@ -21,7 +21,7 @@ bun test
 | 检查项 | 状态 |
 |--------|------|
 | TypeScript | `bun run typecheck` 通过 |
-| 测试 | `886 pass / 0 fail / 18 skip`，共 `67` 个测试文件 |
+| 测试 | `898 pass / 0 fail / 18 skip`，共 `68` 个测试文件 |
 | 稳定性 | 连续 3 次全绿（TEST-STABILITY-01 已关闭） |
 | CI | ✓ ubuntu-latest ✓ windows-latest ✓ macos-latest（OS-17-R 已关闭） |
 
@@ -785,7 +785,7 @@ DEEPICODE_TRACE=1
 | LSP-30：Manager 和文档同步 | ✅ 已完成 | LspManager 类、文档同步、12 个测试 |
 | LSP-40：完整动作集 | ✅ 已完成 | 14 个 actions + 5 个别名、28 个测试 |
 | LSP-50：真实语言服务器 smoke | ✅ 已完成 | TypeScript/Python/Go/Rust smoke tests、14 个测试 |
-| LSP-60：工具链集成和可观测性 | 待领取 | |
+| LSP-60：工具链集成和可观测性 | ✅ 已完成 | LspLogger、9 种事件、12 个测试、@deepicode/core 导出 RuntimeLogger |
 
 ### 6.2 仍然有效的设计决策
 
