@@ -3,3 +3,6 @@ export type { PluginSpec, PluginOptions, PluginConfigItem, PluginConfigError, Pl
 
 export { loadPlugins } from "./loader.js"
 export type { PluginModule, PluginServer, PluginHooks, PluginLoaded, PluginLoadError, PluginLoadResult } from "./loader.js"
+
+export { extractToolsFromPlugins, pluginToolsToToolSpecs, executePluginTool } from "./tool-adapter.js"
+export type { PluginTool, PluginToolError, PluginToolResult } from "./tool-adapter.js"

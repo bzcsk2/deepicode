@@ -1141,13 +1141,17 @@ RuntimeLogger 增加事件：
 
 ### PLG-30：tool adapter
 
-目标：
+**状态：✅ 已完成（2026-06-03）**
 
-- 支持 opencode `tool()` 定义。
-- 转换 zod schema 到 JSON Schema 基础子集。
-- 注册 plugin tools 到 `ReasonixEngine`。
-- 工具名命名空间化。
-- 执行结果转换为 Deepicode tool result。
+实现内容：
+
+- `packages/plugin/src/tool-adapter.ts`：plugin tool 提取和执行
+- 支持 opencode `tool()` 定义
+- 转换 zod schema 到 JSON Schema 基础子集（string/number/boolean/object/enum/array）
+- 注册 plugin tools 到 `ReasonixEngine`
+- 工具名命名空间化（`pluginId.hookName`）
+- 执行结果转换为 Deepicode tool result
+- 9 个单元测试覆盖所有场景
 
 测试：
 
