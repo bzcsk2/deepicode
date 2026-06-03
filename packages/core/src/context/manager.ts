@@ -8,6 +8,7 @@ import type { FoldDecision } from "./token-estimator.js"
 
 export interface ContextBudget {
   prefixTokens: number
+  summaryTokens: number
   logTokens: number
   scratchTokens: number
   totalTokens: number
@@ -15,10 +16,23 @@ export interface ContextBudget {
   ratio: number
 }
 
+export type ContextReductionMode = "trim" | "compress"
+export type { ContextPolicyMode } from "./policy.js"
+
+export interface ContextReductionResult {
+  mode: ContextReductionMode
+  beforeTokens: number
+  afterTokens: number
+  targetTokens: number
+  removedMessages: number
+  summaryTokens: number
+}
+
 export class ContextManager {
   readonly prefix: ImmutablePrefix
   readonly log: AppendOnlyLog
   readonly scratch: VolatileScratch
+  private summaryMessages: ChatMessage[] = []
   private maxRounds: number
 
   private tokenizer: TokenizerPool
@@ -45,11 +59,12 @@ export class ContextManager {
 
   async getBudget(): Promise<ContextBudget> {
     const prefixTokens = estimateTokens([...this.prefix.messages])
+    const summaryTokens = estimateTokens([...this.summaryMessages])
     const log = this.prepareLog()
     const logTokens = estimateTokens(log)
     const scratchTokens = estimateTokens([...this.scratch.messages])
-    const totalTokens = prefixTokens + logTokens + scratchTokens
-    return { prefixTokens, logTokens, scratchTokens, totalTokens, window: this.contextWindow, ratio: totalTokens / this.contextWindow }
+    const totalTokens = prefixTokens + summaryTokens + logTokens + scratchTokens
+    return { prefixTokens, summaryTokens, logTokens, scratchTokens, totalTokens, window: this.contextWindow, ratio: totalTokens / this.contextWindow }
   }
 
   async getFoldDecision(): Promise<FoldDecision> {
@@ -72,6 +87,7 @@ export class ContextManager {
 
   buildMessages(): ChatMessage[] {
     const prefixMsgs = this.prefix.messages
+    const summaryMsgs = this.summaryMessages
     const scratchMsgs = this.scratch.messages
 
     const log = this.prepareLog()
@@ -93,9 +109,93 @@ export class ContextManager {
 
     return [
       ...prefixMsgs,
+      ...summaryMsgs,
       ...log,
       ...scratchMsgs,
     ]
+  }
+
+  reduceToTarget(mode: ContextReductionMode, targetRatio: number): ContextReductionResult {
+    const targetTokens = Math.max(1, Math.floor(this.contextWindow * targetRatio))
+    const beforeTokens = estimateTokens(this.buildMessages())
+    if (beforeTokens <= targetTokens) {
+      return {
+        mode,
+        beforeTokens,
+        afterTokens: beforeTokens,
+        targetTokens,
+        removedMessages: 0,
+        summaryTokens: estimateTokens(this.summaryMessages),
+      }
+    }
+
+    const originalLog = [...this.log.messages]
+    const protectedStart = this.lastRoundStart(originalLog)
+    const protectedTail = protectedStart >= 0 ? originalLog.slice(protectedStart) : []
+    let current = protectedStart >= 0 ? originalLog.slice(0, protectedStart) : [...originalLog]
+    const removed: ChatMessage[] = []
+
+    const estimateWithTail = (candidate: ChatMessage[]): number =>
+      estimateTokens([...this.prefix.messages, ...this.summaryMessages, ...candidate, ...protectedTail, ...this.scratch.messages])
+
+    while (current.length > 0 && estimateWithTail(current) > targetTokens) {
+      const end = this.firstRoundEnd(current)
+      removed.push(...current.slice(0, end))
+      current = current.slice(end)
+    }
+
+    if (mode === "compress" && removed.length > 0) {
+      this.summaryMessages = [this.createSummaryMessage(removed)]
+      while (current.length > 0 && estimateWithTail(current) > targetTokens) {
+        const end = this.firstRoundEnd(current)
+        current = current.slice(end)
+      }
+    }
+
+    this.log.replaceAll([...current, ...protectedTail])
+    const afterTokens = estimateTokens(this.buildMessages())
+    return {
+      mode,
+      beforeTokens,
+      afterTokens,
+      targetTokens,
+      removedMessages: removed.length,
+      summaryTokens: estimateTokens(this.summaryMessages),
+    }
+  }
+
+  private firstRoundEnd(messages: ChatMessage[]): number {
+    if (messages.length === 0) return 0
+    for (let i = 1; i < messages.length; i++) {
+      if (messages[i].role === "user") return i
+    }
+    return messages.length
+  }
+
+  private lastRoundStart(messages: ChatMessage[]): number {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") return i
+    }
+    return -1
+  }
+
+  private createSummaryMessage(messages: ChatMessage[]): ChatMessage {
+    const existing = this.summaryMessages.map(m => m.content ?? "").filter(Boolean).join("\n\n")
+    const lines = messages.map((message) => {
+      const raw = message.content ?? ""
+      const content = raw.replace(/\s+/g, " ").trim()
+      const clipped = content.length > 240 ? `${content.slice(0, 239)}...` : content
+      return `${message.role}: ${clipped}`
+    }).filter(line => !line.endsWith(": "))
+
+    const summary = [
+      "Previous conversation summary:",
+      existing,
+      lines.join("\n"),
+      "This summary was generated to reduce context usage. Newer messages override this summary when conflicts exist.",
+    ].filter(Boolean).join("\n\n")
+
+    return { role: "system", content: summary }
   }
 
   private truncateByRounds(log: ChatMessage[]): ChatMessage[] {
@@ -119,7 +219,7 @@ export class ContextManager {
   private truncateToBudget(log: ChatMessage[]): ChatMessage[] {
     if (log.length === 0) return log
 
-    const baselineTokens = estimateTokens([...this.prefix.messages, ...this.scratch.messages])
+    const baselineTokens = estimateTokens([...this.prefix.messages, ...this.summaryMessages, ...this.scratch.messages])
 
     let current = [...log]
     let estimated = estimateTokens(current)

@@ -19,6 +19,21 @@ import type { ModeStats } from "./mode-stats.js"
 import { createRuntimeLoggerFromEnv, type RuntimeLogger } from "./runtime-logger.js"
 import type { ResultPersistenceConfig } from "./result-persistence.js"
 import { getTier, type StrategyTier } from "./strategy/tiers.js"
+import type { EngineStatusSnapshot } from "./status.js"
+import type { ContextReductionMode, ContextReductionResult } from "./context/manager.js"
+import type { ContextPolicy } from "./context/policy.js"
+import { validateContextPolicy, mergeContextPolicy, DEFAULT_CONTEXT_POLICY } from "./context/policy.js"
+import { ContextPolicyStore } from "./context/policy-store.js"
+export type { ContextPolicy } from "./context/policy.js"
+
+export interface ContextPolicyStatus {
+  policy: ContextPolicy
+  totalTokens: number
+  window: number
+  ratio: number
+  triggerTokens: number
+  targetTokens: number
+}
 
 /**
  * ReasonixEngine 是 Deepicode 的核心引擎，负责：
@@ -84,6 +99,14 @@ export class ReasonixEngine implements CoreEngine {
 
   /** ST2: Current strategy tier */
   private currentTier: StrategyTier = getTier("normal")
+
+  /** 当前会话启用的技能内容，会附加到 system prompt */
+  private activeSkills: Array<{ name: string; description: string; content: string }> = []
+
+  private contextPolicy: ContextPolicy = { ...DEFAULT_CONTEXT_POLICY }
+
+  /** Context policy store for persistence */
+  private policyStore: ContextPolicyStore
 
   /** ST2: Pending tier decision from TUI */
   private pendingTierDecision: { resolve: (v: boolean) => void; tier: string } | null = null
@@ -171,6 +194,17 @@ export class ReasonixEngine implements CoreEngine {
     this.onStart = onStart
     this.onStart?.()
 
+    // Initialize policy store and load saved policy
+    this.policyStore = new ContextPolicyStore()
+    this.policyStore.load().then(savedPolicy => {
+      this.contextPolicy = savedPolicy
+      if (this.logger.isEnabled("info")) {
+        this.logger.info("context.policy.loaded", { policy: savedPolicy })
+      }
+    }).catch(() => {
+      // If load fails, keep default policy
+    })
+
     // 尝试初始化会话持久化（best-effort，失败则不记录）
     this.rebindSessionWriter(this.sessionId)
     if (this.logger.isEnabled()) this.logger.info("engine.created", { provider: config.provider, model: config.model })
@@ -246,9 +280,66 @@ export class ReasonixEngine implements CoreEngine {
     this.ctx.prefix.build(prompt)
   }
 
+  /** 更新当前会话启用的技能列表 */
+  setActiveSkills(skills: Array<{ name: string; description: string; content: string }>): void {
+    this.activeSkills = skills.map(skill => ({
+      name: skill.name,
+      description: skill.description,
+      content: skill.content,
+    }))
+  }
+
+  /** 获取当前会话启用的技能列表 */
+  getActiveSkills(): Array<{ name: string; description: string; content: string }> {
+    return this.activeSkills.map(skill => ({ ...skill }))
+  }
+
+  private buildActiveSkillsPrompt(): string {
+    if (this.activeSkills.length === 0) return ""
+    const blocks = this.activeSkills.map(skill => [
+      `### ${skill.name}`,
+      skill.description,
+      skill.content.trim(),
+    ].filter(Boolean).join("\n"))
+    return [
+      "## Enabled Skills",
+      "The following skills are enabled for this session. Use them as guidance when relevant.",
+      "",
+      blocks.join("\n\n"),
+    ].join("\n")
+  }
+
   /** 获取上下文管理器实例 */
   getContextManager(): ContextManager {
     return this.ctx
+  }
+
+  getContextPolicy(): ContextPolicy {
+    return { ...this.contextPolicy }
+  }
+
+  async setContextPolicy(policy: Partial<ContextPolicy>): Promise<void> {
+    this.contextPolicy = mergeContextPolicy(this.contextPolicy, policy)
+    await this.policyStore.save(this.contextPolicy)
+    if (this.logger.isEnabled("info")) {
+      this.logger.info("context.policy.saved", { policy: this.contextPolicy })
+    }
+  }
+
+  async getContextPolicyStatus(): Promise<ContextPolicyStatus> {
+    const budget = await this.ctx.getBudget()
+    return {
+      policy: this.getContextPolicy(),
+      totalTokens: budget.totalTokens,
+      window: budget.window,
+      ratio: budget.ratio,
+      triggerTokens: Math.floor(budget.window * this.contextPolicy.triggerRatio),
+      targetTokens: Math.floor(budget.window * this.contextPolicy.targetRatio),
+    }
+  }
+
+  async runContextReduction(mode?: ContextReductionMode): Promise<ContextReductionResult> {
+    return this.ctx.reduceToTarget(mode ?? this.contextPolicy.mode, this.contextPolicy.targetRatio)
   }
 
   /** 注册一个工具到引擎 */
@@ -366,11 +457,20 @@ export class ReasonixEngine implements CoreEngine {
 
     // 合并 agent 配置：优先使用传入的 agentConfig，否则用当前 agent 的默认配置
     const ac = agentConfig ?? agentConfigFor(this.currentAgent)
-    const systemPrompt = ac.systemPrompt ?? this.ctx.prefix.messages[0]?.content ?? ""
+    const baseSystemPrompt = ac.systemPrompt ?? this.ctx.prefix.messages[0]?.content ?? ""
+    const activeSkillsPrompt = this.buildActiveSkillsPrompt()
+    const systemPrompt = [baseSystemPrompt, activeSkillsPrompt].filter(Boolean).join("\n\n")
     this.ctx.prefix.build(systemPrompt)
 
     this.ctx.startTurn()
     this.ctx.log.append({ role: "user", content: userInput })
+    const budget = await this.ctx.getBudget()
+    if (budget.ratio >= this.contextPolicy.triggerRatio) {
+      const result = this.ctx.reduceToTarget(this.contextPolicy.mode, this.contextPolicy.targetRatio)
+      if (this.logger.isEnabled("info")) {
+        this.logger.info("context.reduction.done", { ...result })
+      }
+    }
     this.sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: this.ctx.buildMessages() })
     if (diagnosticsEnabled) submitLogger.info("submit.start", { agent: this.currentAgent, inputLength: userInput.length })
 
@@ -392,7 +492,8 @@ export class ReasonixEngine implements CoreEngine {
       }
 
       const toolSpecsKey = JSON.stringify([...toolSpecs].sort((a, b) => a.function.name.localeCompare(b.function.name)))
-      const cacheKey = `${systemPrompt}|${toolSpecsKey}`
+      const skillsKey = JSON.stringify(this.activeSkills.map(skill => ({ name: skill.name, description: skill.description, content: skill.content })))
+      const cacheKey = `${systemPrompt}|${toolSpecsKey}|${skillsKey}`
       if (cacheKey !== this.prefixCacheKey) {
         this.ctx.prefix.build(systemPrompt, toolSpecs)
         this.prefixCacheKey = cacheKey
@@ -409,6 +510,7 @@ export class ReasonixEngine implements CoreEngine {
           model: ac.model ?? this.config.model,
           maxTokens: ac.maxTokens ?? this.config.maxTokens,
           temperature: ac.temperature ?? this.config.temperature,
+          provider: this.config.provider,
         },
         signal: abortController.signal,
         sessionWriter: this.sessionWriter,

@@ -9,18 +9,22 @@ import { DeepiMessages } from './DeepiMessages.js';
 import { DeepiPromptInput, type DeepiPromptInputHandle } from './DeepiPromptInput.js';
 import { StatusBar } from './StatusBar.js';
 import { FullscreenLayout, TerminalHeader } from './FullscreenLayout.js';
+import { WelcomeScreen } from './WelcomeScreen.js';
 import { isFullscreenEnvEnabled } from './fullscreen.js';
 import { ModelPicker } from './ModelPicker.js';
 import { SessionPicker } from './SessionPicker.js';
 import { PermissionPrompt } from './PermissionPrompt.js';
 import { CommandAutocomplete } from './CommandAutocomplete.js';
 import { SearchOverlay } from './SearchOverlay.js';
-import { t, setLocale, toggleLocale, getLocale } from './i18n/index.js';
+import { CenteredStage } from './CenteredStage.js';
+import { ChoiceMenu } from './ChoiceMenu.js';
+import { SkillModal } from './SkillModal.js';
+import { ContextModal } from './ContextModal.js';
+import { formatStatus } from './status/format.js';
+import { t, setLocale } from './i18n/index.js';
 import {
   buildHelpText,
-  formatSkillList,
   parseSlashCommand,
-  toggleAgent,
   validateThinkingMode,
 } from './commands.js';
 
@@ -99,6 +103,44 @@ const initialState: BridgeState = {
   thinkingMode: 'off',
 };
 
+const MAX_INPUT_HISTORY = 100;
+
+interface SkillRecord {
+  name: string;
+  description: string;
+  content: string;
+}
+
+function extractSkillTags(text: string): string[] {
+  const names = new Set<string>();
+  for (const match of text.matchAll(/(?:^|\s)#([A-Za-z0-9_.-]+)/g)) {
+    if (match[1]) names.add(match[1]);
+  }
+  return [...names];
+}
+
+function parseSkillDetail(content: string): SkillRecord {
+  const parsed = JSON.parse(content) as Partial<SkillRecord>;
+  if (!parsed.name || !parsed.description || !parsed.content) {
+    throw new Error('invalid skill payload');
+  }
+  return { name: parsed.name, description: parsed.description, content: parsed.content };
+}
+
+async function loadTaggedSkills(names: string[]): Promise<SkillRecord[]> {
+  if (names.length === 0) return [];
+  const { createSkillTool } = await import('@deepicode/tools');
+  const tool = createSkillTool();
+  const loaded: SkillRecord[] = [];
+  for (const name of names) {
+    const output = await tool.execute({ command: 'load', query: name }, { cwd: process.cwd(), sessionId: '' });
+    if (output.isError) continue;
+    const content = typeof output.content === 'string' ? output.content : String(output.content ?? '');
+    loaded.push(parseSkillDetail(content));
+  }
+  return loaded;
+}
+
 export function getProviderLabel(provider: string): string {
   const info = PROVIDERS[provider];
   return info ? info.label : provider;
@@ -168,12 +210,28 @@ export function App({ engine, config }: AppProps) {
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
+  const [showAgentMenu, setShowAgentMenu] = useState(false);
+  const [showLangMenu, setShowLangMenu] = useState(false);
+  const [showThinkingMenu, setShowThinkingMenu] = useState(false);
+  const [showSkillModal, setShowSkillModal] = useState(false);
+  const [showContextModal, setShowContextModal] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [activeAgent, setActiveAgent] = useState(engine.getAgentName?.() ?? 'build');
+  const [activeSkills, setActiveSkills] = useState(engine.getActiveSkills?.() ?? []);
+  const [inputHistory, setInputHistory] = useState<string[]>([]);
+  const [inputInjection, setInputInjection] = useState<{ id: number; text: string } | undefined>(undefined);
+  const [contextPolicy, setContextPolicy] = useState(engine.getContextPolicy());
 
   const handleSubmit = useCallback((text: string) => {
+    const submitted = text.trim();
+    if (submitted) {
+      setInputHistory(prev => [
+        submitted,
+        ...prev.filter(item => item !== submitted),
+      ].slice(0, MAX_INPUT_HISTORY));
+    }
     setShowAutocomplete(false);
-    const command = parseSlashCommand(text);
+    const command = parseSlashCommand(submitted);
     if (command?.name === 'exit') {
       exitPending = true;
       engineRef.current.interrupt();
@@ -188,6 +246,18 @@ export function App({ engine, config }: AppProps) {
       });
       return;
     }
+    if (command?.name === 'status') {
+      void (async () => {
+        try {
+          const snapshot = await engineRef.current.getStatusSnapshot();
+          appendMessage({ role: 'assistant' as const, content: formatStatus(snapshot) });
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          appendMessage({ role: 'assistant' as const, content: `Failed to load status: ${msg}` });
+        }
+      })();
+      return;
+    }
     if (command?.name === 'model') {
       setShowModelPicker(true);
       return;
@@ -197,43 +267,82 @@ export function App({ engine, config }: AppProps) {
       return;
     }
     if (command?.name === 'skill') {
-      import("@deepicode/tools").then(async ({ createSkillTool }) => {
-        const tool = createSkillTool()
-        const result = await tool.execute({ command: "list" }, { cwd: process.cwd(), sessionId: "" })
-        const msg = formatSkillList(result.content, t().loadedSkills)
-        appendMessage({ role: 'assistant' as const, content: msg })
-      }).catch(e => {
-        const msg = e instanceof Error ? e.message : String(e)
-        appendMessage({ role: 'assistant' as const, content: t().failedLoadSkills(msg) })
-      })
-      return
+      setShowSkillModal(true);
+      return;
+    }
+    if (command?.name === 'context') {
+      setShowContextModal(true);
+      return;
     }
     if (command?.name === 'agent') {
-      const { next } = toggleAgent(activeAgent);
-      const label = engineRef.current.switchAgent(next);
-      setActiveAgent(next);
-      appendMessage({ role: 'assistant' as const, content: t().switchedTo(label) });
+      setShowAgentMenu(true);
       return;
     }
     if (command?.name === 'thinking') {
-      const error = validateThinkingMode(command.mode);
-      if (error) {
-        appendMessage({ role: 'assistant' as const, content: `${error}\nCurrent: ${bridgeState.thinkingMode}` });
+      if (command.mode) {
+        const error = validateThinkingMode(command.mode);
+        if (error) {
+          appendMessage({ role: 'assistant' as const, content: `${error}\nCurrent: ${bridgeState.thinkingMode}` });
+          return;
+        }
+        engineRef.current.setThinkingMode(command.mode as any);
+        setBridgeState(prev => ({ ...prev, thinkingMode: command.mode }));
+        appendMessage({ role: 'assistant' as const, content: `Thinking mode set to: ${command.mode}` });
         return;
       }
-      engineRef.current.setThinkingMode(command.mode as any);
-      setBridgeState(prev => ({ ...prev, thinkingMode: command.mode }));
-      appendMessage({ role: 'assistant' as const, content: `Thinking mode set to: ${command.mode}` });
+      setShowThinkingMenu(true);
       return;
     }
     if (command?.name === 'lang') {
-      const next = toggleLocale();
-      setLocale(next);
-      appendMessage({ role: 'assistant' as const, content: t().switchedLang(next) });
+      setShowLangMenu(true);
       return;
     }
-    bridge.submit(text);
+    const taggedSkillNames = extractSkillTags(submitted);
+    if (taggedSkillNames.length === 0) {
+      bridge.submit(submitted);
+      return;
+    }
+
+    void (async () => {
+      const previousSkills = engineRef.current.getActiveSkills();
+      const taggedSkills = await loadTaggedSkills(taggedSkillNames);
+      const merged = [
+        ...previousSkills.filter(skill => !taggedSkills.some(tagged => tagged.name === skill.name)),
+        ...taggedSkills,
+      ];
+      engineRef.current.setActiveSkills(merged);
+      try {
+        await bridge.submit(submitted);
+      } finally {
+        engineRef.current.setActiveSkills(previousSkills);
+      }
+    })();
   }, [activeAgent, appendMessage, bridge]);
+
+  const handleAgentChoose = useCallback((next: string) => {
+    const label = engineRef.current.switchAgent(next);
+    setActiveAgent(next);
+    setShowAgentMenu(false);
+    appendMessage({ role: 'assistant' as const, content: t().switchedTo(label) });
+  }, [appendMessage]);
+
+  const handleLangChoose = useCallback((next: string) => {
+    setLocale(next as any);
+    setShowLangMenu(false);
+    appendMessage({ role: 'assistant' as const, content: t().switchedLang(next) });
+  }, [appendMessage]);
+
+  const handleThinkingChoose = useCallback((mode: string) => {
+    const error = validateThinkingMode(mode);
+    if (error) {
+      appendMessage({ role: 'assistant' as const, content: `${error}\nCurrent: ${bridgeState.thinkingMode}` });
+      return;
+    }
+    engineRef.current.setThinkingMode(mode as any);
+    setBridgeState(prev => ({ ...prev, thinkingMode: mode }));
+    setShowThinkingMenu(false);
+    appendMessage({ role: 'assistant' as const, content: `Thinking mode set to: ${mode}` });
+  }, [appendMessage, bridgeState.thinkingMode]);
 
   const handleModelSelect = useCallback((sel: { provider: string; model: string; apiKey: string; baseUrl: string }) => {
     engineRef.current.updateConfig({
@@ -280,25 +389,107 @@ export function App({ engine, config }: AppProps) {
 
   if (showModelPicker) {
     return (
-      <Box flexDirection="column" width="100%" height="100%">
+      <CenteredStage width={88}>
         <ModelPicker
           currentProvider={activeProvider}
           currentModel={activeModel}
           onSelect={handleModelSelect}
           onCancel={handleModelCancel}
         />
-      </Box>
+      </CenteredStage>
     );
   }
 
   if (showSessionPicker) {
     return (
-      <Box flexDirection="column" width="100%" height="100%">
+      <CenteredStage width={92}>
         <SessionPicker
           onSelect={handleSessionSelect}
           onCancel={handleSessionCancel}
         />
-      </Box>
+      </CenteredStage>
+    );
+  }
+
+  if (showAgentMenu) {
+    return (
+      <ChoiceMenu
+        title="Agent"
+        subtitle="选择切换目标"
+        items={[
+          { value: "build", label: "Build Agent", description: "完整读写工具" },
+          { value: "plan", label: "Plan Agent", description: "只读分析" },
+        ]}
+        onChoose={handleAgentChoose}
+        onCancel={() => setShowAgentMenu(false)}
+      />
+    );
+  }
+
+  if (showLangMenu) {
+    return (
+      <ChoiceMenu
+        title="Language"
+        subtitle="选择界面语言"
+        items={[
+          { value: "zh-CN", label: "中文", description: "切换到中文界面" },
+          { value: "en", label: "English", description: "switch to English" },
+        ]}
+        onChoose={handleLangChoose}
+        onCancel={() => setShowLangMenu(false)}
+      />
+    );
+  }
+
+  if (showThinkingMenu) {
+    return (
+      <ChoiceMenu
+        title="Thinking"
+        subtitle="选择推理档位"
+        items={[
+          { value: "off", label: "off", description: "disable reasoning" },
+          { value: "low", label: "low", description: "light reasoning" },
+          { value: "medium", label: "medium", description: "balanced reasoning" },
+          { value: "high", label: "high", description: "strong reasoning" },
+          { value: "max", label: "max", description: "maximum reasoning" },
+        ]}
+        onChoose={handleThinkingChoose}
+        onCancel={() => setShowThinkingMenu(false)}
+      />
+    );
+  }
+
+  if (showSkillModal) {
+    return (
+      <SkillModal
+        activeSkills={activeSkills}
+        onChange={(skills) => {
+          setActiveSkills(skills);
+          engineRef.current.setActiveSkills(skills);
+        }}
+        onInsertSkill={(skillName) => {
+          const text = `#${skillName} `;
+          setInputInjection(prev => ({ id: (prev?.id ?? 0) + 1, text }));
+          setInputText(text);
+          setShowSkillModal(false);
+        }}
+        onClose={() => setShowSkillModal(false)}
+      />
+    );
+  }
+
+  if (showContextModal) {
+    return (
+      <ContextModal
+        policy={contextPolicy}
+        loadStatus={() => engineRef.current.getContextPolicyStatus()}
+        onPolicyChange={async (policy) => {
+          await engineRef.current.setContextPolicy(policy);
+          setContextPolicy(engineRef.current.getContextPolicy());
+        }}
+        onRunReduction={() => engineRef.current.runContextReduction()}
+        onClose={() => setShowContextModal(false)}
+      />
     );
   }
 
@@ -313,6 +504,14 @@ export function App({ engine, config }: AppProps) {
         timeline={bridgeState.timeline}
         scrollRef={scrollRef}
       />
+      {bridgeState.timeline.length === 0 && !bridgeState.isLoading && !bridgeState.error ? (
+        <WelcomeScreen
+          model={activeModel}
+          provider={providerLabel}
+          agent={AGENTS[activeAgent]?.label ?? activeAgent}
+          thinkingMode={bridgeState.thinkingMode}
+        />
+      ) : null}
       {bridgeState.warnings.map((w, i) => (
         <Box key={i} paddingX={1}>
           <Text color="warning">⚠ {w}</Text>
@@ -338,7 +537,13 @@ export function App({ engine, config }: AppProps) {
       {showAutocomplete && (
         <CommandAutocomplete
           query={inputText}
-          onSelect={(cmd) => {
+          onSubmit={(cmd) => {
+            promptInputRef.current?.writeText('');
+            setInputText('');
+            setShowAutocomplete(false);
+            handleSubmit(cmd);
+          }}
+          onComplete={(cmd) => {
             promptInputRef.current?.writeText(cmd + ' ');
             setShowAutocomplete(false);
           }}
@@ -348,6 +553,8 @@ export function App({ engine, config }: AppProps) {
       <DeepiPromptInput
         ref={promptInputRef}
         onSubmit={handleSubmit}
+        history={inputHistory}
+        injectedText={inputInjection}
         onChange={(text) => {
           setInputText(text);
           setShowAutocomplete(text.startsWith('/') && !text.includes(' '));
@@ -357,6 +564,7 @@ export function App({ engine, config }: AppProps) {
         queueCount={bridgeState.messageQueue.length}
         onCancel={handleCancel}
         suppressHistory={showAutocomplete}
+        suppressSubmit={showAutocomplete}
       />
       <StatusBar
         model={activeModel}

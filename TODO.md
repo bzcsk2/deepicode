@@ -3,7 +3,7 @@
 最后更新：2026-06-03
 
 本文是后续 Agent 的唯一待办入口，只记录**尚未完成**、**待验收**、**明确暂缓**或**已经驳回**的工作。
-已完成能力和历史实施结论见 [DONE.md](DONE.md)。LSP 和 Plugin 的专项设计见 [ADVICE.md](ADVICE.md)。
+已完成能力和历史实施结论见 [DONE.md](DONE.md)。Context 的专项设计见 [ADVICE.md](ADVICE.md)。
 
 ---
 
@@ -60,13 +60,46 @@ bun test packages/mcp/__tests__/mcp-host.test.ts packages/mcp/__tests__/mcp-tool
 
 | 顺序 | 任务 | 原因 |
 |------|------|------|
-| 1 | `OS-12/13-R` macOS/Windows 原生验收 | 代码层面已就绪，需在原生环境验收。 |
+| 1 | `CTX-30` 摘要区和 summarizer 接口 | CTX-10 已完成，按 ADVICE.md 顺序继续。 |
+| 2 | `OS-12/13-R` macOS/Windows 原生验收 | 代码层面已就绪，需在原生环境验收。 |
 
 不要一次领取多个任务。每个编号完成后都应保持全量测试为绿色。
 
 ---
 
 ## 2. 后续任务
+
+### CTX-30：摘要区和 summarizer 接口
+
+优先级：`P1`。CTX-10 已完成后执行。
+
+当前状态：
+
+- `buildMessages()` 已包含 summary 区域。
+- `summaryTokens` 已计入 budget。
+- `ContextManager.createSummaryMessage()` 已存在，但只是机械字符串拼接。
+
+目标：
+
+- 独立 `ContextSummary` 模块。
+- `ContextSummarizer` 接口。
+- fake summarizer 用于单测。
+
+执行要求：
+
+1. 新增 `packages/core/src/context/summary.ts`：维护 summary message，支持 replace / clear / read，summary 必须有明显标记。
+2. 新增 `ContextSummarizer` 接口：输入旧消息、旧 summary、目标 token 预算、workspace 信息；输出新的 summary 文本和可选 usage 数据。
+3. 先做 fake summarizer 用于单测，返回固定摘要。
+4. 保证 summary 的插入顺序稳定：prefix → summary → log → scratch。
+5. 编写 `packages/core/__tests__/context-summary.test.ts` 测试文件。
+
+验收命令：
+
+```bash
+bun test packages/core/__tests__/context-summary.test.ts
+bun run typecheck
+bun test
+```
 
 ### OS-12/13-R：macOS 与 Windows 原生验收
 
@@ -89,93 +122,16 @@ bun test packages/mcp/__tests__/mcp-host.test.ts packages/mcp/__tests__/mcp-tool
 - 项目负责人完成目标平台对应的 `H8` 人工验收。
 - 结果写入 `DONE.md`。
 
-### ~~LSP-10：配置、语言识别和返回格式~~ ✅ DONE
 
-优先级：`P2`。专项设计见 [ADVICE.md](ADVICE.md) 的 `LSP-10` 到 `LSP-60`。
-
-当前状态：
-
-- ✅ 已完成（2026-06-03）。
-- 实现：config.ts、language.ts、normalize.ts、lsp.ts 升级、lsp-client.ts 更新。
-- 测试：36 个单元测试 + 17 个集成测试通过。
-
-### ~~LSP-20：协议层和长驻 Client~~ ✅ DONE
-
-优先级：`P2`。专项设计见 [ADVICE.md](ADVICE.md) 的 `LSP-20`。
-
-当前状态：
-
-- ✅ 已完成（2026-06-03）。
-- 实现：vscode-jsonrpc 协议层、LspClient 类。
-- 测试：11 个单元测试通过。
-
-### ~~LSP-30：Manager 和文档同步~~ ✅ DONE
-
-优先级：`P2`。专项设计见 [ADVICE.md](ADVICE.md) 的 `LSP-30`。
-
-当前状态：
-
-- ✅ 已完成（2026-06-03）。
-- 实现：LspManager 类、文档同步、idle timeout 清理。
-- 测试：12 个单元测试通过。
-
-### ~~LSP-40：完整动作集~~ ✅ DONE
-
-优先级：`P2`。专项设计见 [ADVICE.md](ADVICE.md) 的 `LSP-40`。
-
-当前状态：
-
-- ✅ 已完成（2026-06-03）。
-- 实现：14 个 actions + 5 个别名。
-- 测试：28 个单元测试通过。
-
-### ~~LSP-50：真实语言服务器 smoke~~ ✅ DONE
-
-优先级：`P2`。专项设计见 [ADVICE.md](ADVICE.md) 的 `LSP-50`。
-
-当前状态：
-
-- ✅ 已完成（2026-06-03）。
-- 实现：TypeScript/Python/Go/Rust smoke tests、14 个测试。
-
-### ~~LSP-60：工具链集成和可观测性~~ ✅ DONE
-
-优先级：`P2`。专项设计见 [ADVICE.md](ADVICE.md) 的 `LSP-60`。
-
-当前状态：
-
-- ✅ 已完成（2026-06-03）。
-- 实现：LspLogger、9 种 LSP 事件、12 个测试、@deepicode/core 导出 RuntimeLogger。
-- 需要验证真实语言服务器（TypeScript、Python、Go、Rust）。
-
-关闭条件：
-
-- 按 `ADVICE.md` 完成当前领取阶段。
-- 将阶段实现、验证命令和剩余限制写入 `DONE.md`。
-- 从本文更新下一阶段入口。
-
-### ~~PLG-10：Plugin 配置与 spec 解析~~ ✅ DONE
-
-优先级：`P2`。专项设计见 [ADVICE.md](ADVICE.md) 的 `PLG-10` 到 `PLG-60`。
-
-当前状态：
-
-- ✅ 已完成（2026-06-03）。
-- 实现：packages/plugin、config.ts、loader.ts。
-- 测试：18 个单元测试通过。
-
-关闭条件：
-
-- 按 `ADVICE.md` 完成当前领取阶段。
-- 将阶段实现、验证命令和剩余限制写入 `DONE.md`。
-- 从本文更新下一阶段入口。
 
 ---
 
 ## 3. 当前验证状态
 
+- CTX-10：策略类型、配置加载和菜单解析 ✅ 已完成
+- CTX-30：摘要区和 summarizer 接口 ⬜ 待开始
 
-下一步：优先执行 `OS-12/13-R` macOS/Windows 原生验收（需人工）。
+下一步：执行 `CTX-30` 摘要区和 summarizer 接口。
 
 ---
 

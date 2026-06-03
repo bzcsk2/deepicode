@@ -113,6 +113,7 @@ TUI 路由已完成接入，`P3-R` 已收口 bridge 回归测试。
 - 中英文 i18n：`zh-CN / en`，`/lang` 切换并写入 `.deepicode/lang.json`。
 - 长会话显示优化：React.memo、useMemo 和 Ink viewport culling。
 - `Ctrl+F` 消息搜索与屏幕空间高亮。
+- `/context` 菜单已完成：居中弹窗，支持 strategy 切换、trigger/target 比例调整、当前用量显示和 `Run now` 立即执行。
 
 ### 3.5 安全
 
@@ -340,6 +341,34 @@ DEEPICODE_TRACE=1
 | 编号 | 内容 | 状态 |
 |------|------|------|
 | ST1 | `strategy/tiers.ts` 四级 tiers 数据模型和测试 | 已完成 |
+
+### 4.8 Context 压缩专项（CTX-10）
+
+| 编号 | 内容 | 状态 |
+|------|------|------|
+| CTX-10 | 策略类型、配置加载和菜单解析 | 已完成 |
+
+**实现边界：**
+
+- 新增 `packages/core/src/context/policy.ts`：定义 `ContextPolicy` 类型、`DEFAULT_CONTEXT_POLICY`、`validateContextPolicy()` 和 `mergeContextPolicy()`。
+- 新增 `packages/core/src/context/policy-store.ts`：负责从 `.deepicode/context.json` 读取和写回策略配置，读失败回退默认值。
+- `ReasonixEngine` 接入 `ContextPolicyStore`：启动时异步加载配置，`setContextPolicy()` 异步保存到文件。
+- `setContextPolicy()` 改为异步方法，TUI 调用点已适配。
+- 新增 `packages/core/__tests__/context-policy.test.ts`：覆盖策略验证、合并和持久化逻辑（26 个测试）。
+
+**验收命令：**
+
+```bash
+bun test packages/core/__tests__/context-policy.test.ts
+bun run typecheck
+bun test
+```
+
+**保留限制：**
+
+- `.deepicode/context.json` 独立持久化，不混入主配置文件。
+- 读取失败回退默认值，不阻塞启动。
+- `setContextPolicy()` 异步保存，best-effort。
 
 ---
 
@@ -770,11 +799,12 @@ DEEPICODE_TRACE=1
 
 `TEST-STABILITY-01` 和 `OS-17-R` 已完成并记录在本文。仍未完成的原生平台人工验收见 `TODO.md`。
 
-2026-06-03 后，`ADVICE.md` 重新用于承载三个新专项设计：
+2026-06-03 后，`ADVICE.md` 重新用于承载后续专项设计：
 
 - LSP 完整实现：参考 opencode LSP 设计，按 Deepicode 架构移植。
 - Plugin 兼容实现：兼容 opencode server plugin 子集，不引入 opencode 前端 runtime。
 - Status 状态卡片：类似 Codex `/status` 的运行状态卡片。
+- Context 压缩与持久化：`/context` 菜单已完成，剩余真实 LLM compact、策略持久化和验收仍见 `ADVICE.md`。
 
 ### 6.1 LSP 专项进度
 
@@ -824,7 +854,21 @@ DEEPICODE_TRACE=1
 
 ---
 
-## 9. 文档维护规则
+## 9. Context 菜单
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| CTX-UI：TUI `/context` 菜单 | ✅ 已完成 | `ContextModal.tsx` 居中菜单，支持 strategy、triggerRatio、targetRatio、当前用量和 `Run now` |
+
+保留限制：
+
+- 当前 `compress` 仍是本地机械 summary，不是真实 LLM compact。
+- `.deepicode/context.json` 策略持久化未完成。
+- 真实 compact、fallback 和完整验收仍按 `ADVICE.md` 推进。
+
+---
+
+## 10. 文档维护规则
 
 1. `DONE.md` 只记录已存在且仍然成立的能力。
 2. 未完成事项移入 `TODO.md`，不要在 DONE 中维护第二套待办列表。
