@@ -371,12 +371,13 @@ bun test
 - 读取失败回退默认值，不阻塞启动。
 - `setContextPolicy()` 异步保存，best-effort。
 
-### 4.9 Context 压缩专项（CTX-30, CTX-40）
+### 4.9 Context 压缩专项（CTX-30, CTX-40, CTX-50）
 
 | 编号 | 内容 | 状态 |
 |------|------|------|
 | CTX-30 | 摘要区和 summarizer 接口 | 已完成 |
 | CTX-40 | Engine 自动 trim/compact 触发 | 已完成 |
+| CTX-50 | 真实 LLM summarizer | 已完成 |
 
 **实现边界：**
 
@@ -425,6 +426,31 @@ bun test
 - compact 失败时 fallback trim，不阻塞 submit。
 - summarizer 未注入时 compact 退化为 trim。
 - 日志不记录原始消息正文。
+
+### 4.11 Context 压缩专项（CTX-50）
+
+**实现边界：**
+
+- 新增 `LLMSummarizer` 类：复用 `DeepSeekClient`，低温度（0.3），不带 tools。
+- 输入控制：`truncateMessages()` 按 targetTokens 截断旧消息，保留最近消息。
+- 输出控制：`maxTokens` 受 `targetRatio` 约束（50%），最小 256 tokens。
+- 错误处理：HTTP 错误抛出、超时（默认 30s）抛出、空摘要抛出、AbortSignal 生效。
+- `LLMSummarizerOptions` 配置：`client`、`apiKey`、`baseUrl`、`model`、`temperature`、`timeoutMs`。
+- 新增 `packages/core/__tests__/context-summarizer.test.ts`：覆盖 LLM summarizer 成功、截断、错误、超时、空摘要、abort 和配置（11 个测试）。
+
+**验收命令：**
+
+```bash
+bun test packages/core/__tests__/context-summarizer.test.ts
+bun run typecheck
+bun test
+```
+
+**保留限制：**
+
+- summarizer 是引擎内部能力，不能触发普通 tool execution。
+- 输入消息截断是机械的，不分析语义。
+- 超时和错误处理是 best-effort，不保证 100% 覆盖所有网络异常。
 
 ---
 

@@ -60,7 +60,7 @@ bun test packages/mcp/__tests__/mcp-host.test.ts packages/mcp/__tests__/mcp-tool
 
 | 顺序 | 任务 | 原因 |
 |------|------|------|
-| 1 | `CTX-50` 真实 LLM summarizer | CTX-40 已完成，按 ADVICE.md 顺序继续。 |
+| 1 | `CTX-70` 文档和验收 | CTX-50 已完成，按 ADVICE.md 顺序继续。 |
 | 2 | `OS-12/13-R` macOS/Windows 原生验收 | 代码层面已就绪，需在原生环境验收。 |
 
 不要一次领取多个任务。每个编号完成后都应保持全量测试为绿色。
@@ -68,6 +68,36 @@ bun test packages/mcp/__tests__/mcp-host.test.ts packages/mcp/__tests__/mcp-tool
 ---
 
 ## 2. 后续任务
+
+### CTX-70：文档和验收
+
+优先级：`P1`。CTX-50 已完成后执行。
+
+当前状态：
+
+- CTX-10/30/40/50 代码已完成。
+- 所有测试通过。
+
+目标：
+
+- 把这个专项从"代码完成"变成"可以交接给别的 agent / 人工验收"的状态。
+
+执行要求：
+
+1. README 或 TEST.md 增加 `/context` 说明。
+2. TODO 记录当前 CTX 阶段。
+3. DONE 记录已完成阶段。
+4. 手工验收 `70% -> 30%` 的 trim 和 compact。
+
+手工验收建议：
+
+1. 启动 TUI。
+2. 输入 `/context`。
+3. 选择 `trim`，设置 `70% -> 30%`，保存。
+4. 用长会话把上下文推到 70% 以上，确认自动裁剪到约 30%。
+5. 切换 `compact`，重复长会话，确认出现 summary。
+6. 模拟 summarizer 失败，确认 fallback trim。
+7. 退出并重启，确认配置仍然生效。
 
 ### CTX-50：真实 LLM summarizer
 
@@ -197,9 +227,10 @@ bun test
 - CTX-10：策略类型、配置加载和菜单解析 ✅ 已完成
 - CTX-30：摘要区和 summarizer 接口 ✅ 已完成
 - CTX-40：Engine 自动 trim/compact 触发 ✅ 已完成
-- CTX-50：真实 LLM summarizer ⬜ 待开始
+- CTX-50：真实 LLM summarizer ✅ 已完成
+- CTX-70：文档和验收 ⬜ 待开始
 
-下一步：执行 `CTX-50` 真实 LLM summarizer。
+下一步：执行 `CTX-70` 文档和验收。
 
 ---
 

@@ -338,7 +338,7 @@ bun test packages/core/__tests__/engine-context-policy.test.ts
 
 ### CTX-50：真实 LLM summarizer
 
-**状态：⬜ 未完成**
+**状态：✅ 已完成**
 
 #### 目标
 
