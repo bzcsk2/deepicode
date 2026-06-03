@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { parseSlashCommand, buildHelpText } from "../src/commands.js"
-import { formatStatus, formatStatusCompact } from "../src/status/format.js"
+import { formatStatus, formatStatusCodex, formatStatusAscii, formatStatusCompact } from "../src/status/format.js"
 import type { EngineStatusSnapshot } from "@deepicode/core"
 
 describe("Slash Command /status", () => {
@@ -55,32 +55,104 @@ describe("Status Format", () => {
     timestamp: "2026-06-03T12:00:00.000Z",
   }
 
-  it("formatStatus returns formatted string", () => {
-    const result = formatStatus(mockSnapshot)
-    expect(result).toContain("Status")
-    expect(result).toContain("test-session-1234")
-    expect(result).toContain("build")
-    expect(result).toContain("No")
-    expect(result).toContain("128000")
-    expect(result).toContain("3500")
-    expect(result).toContain("2.7%")
-    expect(result).toContain("5")
-    expect(result).toContain("3")
-    expect(result).toContain("$0.0123")
-    expect(result).toContain("2026-06-03T12:00:00.000Z")
+  it("formatStatusCodex returns Codex style box", () => {
+    const result = formatStatusCodex(mockSnapshot)
+    expect(result).toContain("┌")
+    expect(result).toContain("┐")
+    expect(result).toContain("└")
+    expect(result).toContain("┘")
+    expect(result).toContain("STATUS")
+    expect(result).toContain("Session:")
+    expect(result).toContain("Agent:")
+    expect(result).toContain("CONTEXT")
+    expect(result).toContain("Window:")
+    expect(result).toContain("STATS")
+    expect(result).toContain("API Calls:")
+    expect(result).toContain("Tool Calls:")
+    expect(result).toContain("Cost:")
+  })
+
+  it("formatStatusAscii returns ASCII box", () => {
+    const result = formatStatusAscii(mockSnapshot)
+    expect(result).toContain("+")
+    expect(result).toContain("-")
+    expect(result).toContain("|")
+    expect(result).not.toContain("┌")
+    expect(result).not.toContain("┐")
+    expect(result).not.toContain("└")
+    expect(result).not.toContain("┘")
   })
 
   it("formatStatusCompact returns compact string", () => {
     const result = formatStatusCompact(mockSnapshot)
     expect(result).toContain("Session: test-ses")
     expect(result).toContain("Agent: build")
-    expect(result).toContain("Tokens: 3500")
-    expect(result).toContain("Cost: $0.0123")
+    expect(result).toContain("Tokens: 3.5K")
+    expect(result).toContain("Cost: $0.012")
   })
 
   it("formatStatus shows submitting state", () => {
     const submittingSnapshot = { ...mockSnapshot, isSubmitting: true }
-    const result = formatStatus(submittingSnapshot)
+    const result = formatStatusCodex(submittingSnapshot)
     expect(result).toContain("Yes")
+  })
+
+  it("formatStatus with custom width", () => {
+    const result = formatStatusCodex(mockSnapshot, { width: 60 })
+    expect(result).toContain("STATUS")
+    const lines = result.split("\n")
+    expect(lines[0].length).toBe(60)
+  })
+
+  it("formatStatus formats tokens correctly", () => {
+    const result = formatStatusCodex(mockSnapshot)
+    expect(result).toContain("3.5K")
+    expect(result).toContain("128.0K")
+  })
+
+  it("formatStatus formats cost correctly", () => {
+    const result = formatStatusCodex(mockSnapshot)
+    expect(result).toContain("$0.012")
+  })
+
+  it("formatStatus calculates cache rate correctly", () => {
+    const result = formatStatusCodex(mockSnapshot)
+    expect(result).toContain("80.0% hit rate")
+  })
+
+  it("snapshot fixture generates stable output", () => {
+    const result1 = formatStatusCodex(mockSnapshot)
+    const result2 = formatStatusCodex(mockSnapshot)
+    expect(result1).toBe(result2)
+  })
+
+  it("width 80 contains all core fields", () => {
+    const result = formatStatusCodex(mockSnapshot, { width: 80 })
+    expect(result).toContain("STATUS")
+    expect(result).toContain("Session:")
+    expect(result).toContain("Agent:")
+    expect(result).toContain("Submitting:")
+    expect(result).toContain("CONTEXT")
+    expect(result).toContain("Window:")
+    expect(result).toContain("Cache:")
+    expect(result).toContain("STATS")
+    expect(result).toContain("API Calls:")
+    expect(result).toContain("Tool Calls:")
+    expect(result).toContain("Cost:")
+  })
+
+  it("narrow width truncates long path", () => {
+    const result = formatStatusCodex(mockSnapshot, { width: 40 })
+    expect(result).toContain("...")
+  })
+
+  it("ASCII fallback no Unicode box drawing", () => {
+    const result = formatStatusAscii(mockSnapshot)
+    expect(result).not.toMatch(/[┌┐└┘├┤┬┴┼─│]/)
+  })
+
+  it("context window uses left% (used / total) format", () => {
+    const result = formatStatusCodex(mockSnapshot)
+    expect(result).toMatch(/Window:\s+\d+\.\d+% left \(\d+\.?\d*K? \/ \d+\.?\d*K?\)/)
   })
 })

@@ -1,30 +1,122 @@
 import type { EngineStatusSnapshot } from "@deepicode/core"
 
-export function formatStatus(snapshot: EngineStatusSnapshot): string {
+export interface FormatOptions {
+  width?: number
+  useUnicode?: boolean
+}
+
+const BOX_CHARS = {
+  unicode: {
+    topLeft: "┌",
+    topRight: "┐",
+    bottomLeft: "└",
+    bottomRight: "┘",
+    horizontal: "─",
+    vertical: "│",
+    teeRight: "├",
+    teeLeft: "┤",
+    teeDown: "┬",
+    teeUp: "┴",
+    cross: "┼",
+  },
+  ascii: {
+    topLeft: "+",
+    topRight: "+",
+    bottomLeft: "+",
+    bottomRight: "+",
+    horizontal: "-",
+    vertical: "|",
+    teeRight: "+",
+    teeLeft: "+",
+    teeDown: "+",
+    teeUp: "+",
+    cross: "+",
+  },
+}
+
+function createBox(width: number, useUnicode: boolean) {
+  const chars = useUnicode ? BOX_CHARS.unicode : BOX_CHARS.ascii
+  return {
+    horizontalLine: () => chars.horizontal.repeat(width - 2),
+    topBorder: () => `${chars.topLeft}${chars.horizontal.repeat(width - 2)}${chars.topRight}`,
+    bottomBorder: () => `${chars.bottomLeft}${chars.horizontal.repeat(width - 2)}${chars.bottomRight}`,
+    separator: () => `${chars.teeRight}${chars.horizontal.repeat(width - 2)}${chars.teeLeft}`,
+    content: (text: string) => {
+      const padded = text.padEnd(width - 4)
+      return `${chars.vertical} ${padded.slice(0, width - 4)} ${chars.vertical}`
+    },
+  }
+}
+
+function formatTokens(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    return `${(tokens / 1_000_000).toFixed(1)}M`
+  }
+  if (tokens >= 1_000) {
+    return `${(tokens / 1_000).toFixed(1)}K`
+  }
+  return tokens.toString()
+}
+
+function formatCost(cost: number): string {
+  if (cost >= 1) {
+    return `$${cost.toFixed(2)}`
+  }
+  if (cost >= 0.01) {
+    return `$${cost.toFixed(3)}`
+  }
+  return `$${cost.toFixed(4)}`
+}
+
+export function formatStatusCodex(snapshot: EngineStatusSnapshot, options: FormatOptions = {}): string {
+  const { width = 80, useUnicode = true } = options
+  const box = createBox(width, useUnicode)
+
+  const sessionId = snapshot.sessionId.length > 20
+    ? snapshot.sessionId.slice(0, 20) + "..."
+    : snapshot.sessionId
+
+  const usedTokens = snapshot.context.prefixTokens + snapshot.context.logTokens + snapshot.context.scratchTokens
+  const leftPercent = ((snapshot.context.window - usedTokens) / snapshot.context.window * 100).toFixed(1)
+  const usedFormatted = formatTokens(usedTokens)
+  const totalFormatted = formatTokens(snapshot.context.window)
+
+  const cacheRate = snapshot.stats.cacheHitTokens + snapshot.stats.cacheMissTokens > 0
+    ? ((snapshot.stats.cacheHitTokens / (snapshot.stats.cacheHitTokens + snapshot.stats.cacheMissTokens)) * 100).toFixed(1)
+    : "0.0"
+
   const lines = [
-    "┌─────────────────────────────────────┐",
-    "│           Status                    │",
-    "├─────────────────────────────────────┤",
-    `│ Session: ${snapshot.sessionId.slice(0, 20)}...`.padEnd(38) + "│",
-    `│ Agent: ${snapshot.currentAgent}`.padEnd(38) + "│",
-    `│ Submitting: ${snapshot.isSubmitting ? "Yes" : "No"}`.padEnd(38) + "│",
-    "├─────────────────────────────────────┤",
-    "│ Context                             │",
-    `│   Window: ${snapshot.context.window}`.padEnd(38) + "│",
-    `│   Total: ${snapshot.context.totalTokens}`.padEnd(38) + "│",
-    `│   Ratio: ${(snapshot.context.ratio * 100).toFixed(1)}%`.padEnd(38) + "│",
-    "├─────────────────────────────────────┤",
-    "│ Stats                               │",
-    `│   API Calls: ${snapshot.stats.apiCalls}`.padEnd(38) + "│",
-    `│   Tool Calls: ${snapshot.stats.toolCalls}`.padEnd(38) + "│",
-    `│   Cost: $${snapshot.stats.totalCost.toFixed(4)}`.padEnd(38) + "│",
-    "├─────────────────────────────────────┤",
-    `│ ${snapshot.timestamp}`.padEnd(38) + "│",
-    "└─────────────────────────────────────┘",
+    box.topBorder(),
+    box.content("STATUS"),
+    box.separator(),
+    box.content(`Session:    ${sessionId}`),
+    box.content(`Agent:      ${snapshot.currentAgent}`),
+    box.content(`Submitting: ${snapshot.isSubmitting ? "Yes" : "No"}`),
+    box.separator(),
+    box.content("CONTEXT"),
+    box.content(`Window:     ${leftPercent}% left (${usedFormatted} / ${totalFormatted})`),
+    box.content(`Cache:      ${cacheRate}% hit rate`),
+    box.separator(),
+    box.content("STATS"),
+    box.content(`API Calls:  ${snapshot.stats.apiCalls}`),
+    box.content(`Tool Calls: ${snapshot.stats.toolCalls}`),
+    box.content(`Cost:       ${formatCost(snapshot.stats.totalCost)}`),
+    box.separator(),
+    box.content(snapshot.timestamp),
+    box.bottomBorder(),
   ]
+
   return lines.join("\n")
 }
 
+export function formatStatusAscii(snapshot: EngineStatusSnapshot, options: FormatOptions = {}): string {
+  return formatStatusCodex(snapshot, { ...options, useUnicode: false })
+}
+
 export function formatStatusCompact(snapshot: EngineStatusSnapshot): string {
-  return `Session: ${snapshot.sessionId.slice(0, 8)} | Agent: ${snapshot.currentAgent} | Tokens: ${snapshot.context.totalTokens} | Cost: $${snapshot.stats.totalCost.toFixed(4)}`
+  return `Session: ${snapshot.sessionId.slice(0, 8)} | Agent: ${snapshot.currentAgent} | Tokens: ${formatTokens(snapshot.context.totalTokens)} | Cost: ${formatCost(snapshot.stats.totalCost)}`
+}
+
+export function formatStatus(snapshot: EngineStatusSnapshot, options: FormatOptions = {}): string {
+  return formatStatusCodex(snapshot, options)
 }

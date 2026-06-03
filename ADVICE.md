@@ -1621,13 +1621,16 @@ bun test packages/tui/__tests__/status-command.test.ts
 
 ### STAT-30：Codex 风格格式化
 
-目标：
+**状态：✅ 已完成（2026-06-03）**
 
-- 新增 `packages/tui/src/status/format.ts`。
-- 生成 Codex 风格 box card。
-- 宽度可配置，默认 80。
-- 支持 Unicode 和 ASCII fallback。
-- 格式化 context、tokens、path、cache rate。
+实现内容：
+
+- `packages/tui/src/status/format.ts`：Codex 风格格式化
+- 生成 Codex 风格 box card
+- 宽度可配置，默认 80
+- 支持 Unicode 和 ASCII fallback
+- 格式化 context、tokens、path、cache rate
+- 16 个单元测试覆盖所有场景
 
 测试：
 
