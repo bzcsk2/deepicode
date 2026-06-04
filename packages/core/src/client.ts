@@ -46,11 +46,13 @@ type SSEChunk = {
     delta?: {
       content?: string
       reasoning_content?: string
+      reasoning?: string
       tool_calls?: ToolCallDelta[]
     }
     message?: {
       content?: string | null
       reasoning_content?: string
+      reasoning?: string
       tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>
     }
     finish_reason?: string | null
@@ -266,9 +268,20 @@ export class DeepSeekClient implements ChatClient {
 
           const choice = json.choices?.[0]
           const delta = choice?.delta
-          if (delta?.reasoning_content) {
+
+          // DEBUG: Log raw SSE delta when thinking is enabled
+          if (opts.thinking?.type === "enabled" && delta) {
+            const keys = Object.keys(delta)
+            if (keys.length > 0 && !firstEventYielded) {
+              requestLogger.info("api.sse.delta_keys", { keys, hasReasoning: !!(delta.reasoning_content || delta.reasoning), hasContent: !!delta.content })
+            }
+          }
+
+          // Support both "reasoning_content" (DeepSeek) and "reasoning" (Zen/Mimo)
+          const reasoningText = delta?.reasoning_content || delta?.reasoning
+          if (reasoningText) {
             yieldFirstEvent("reasoning_delta")
-            yield { type: "reasoning_delta", delta: delta.reasoning_content }
+            yield { type: "reasoning_delta", delta: reasoningText }
           }
           if (delta?.content) {
             yieldFirstEvent("text_delta")
