@@ -13,7 +13,7 @@ describe("LIFE-01: CLI pipe mode lifecycle", () => {
   let sse: Awaited<ReturnType<typeof startScriptedSseServer>>
 
   beforeEach(async () => {
-    tmpDir = join(tmpdir(), `deepicode-pipe-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    tmpDir = join(tmpdir(), `deepreef-pipe-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     await mkdir(tmpDir, { recursive: true })
     sse = await startScriptedSseServer({ responses: ["hello", " world", "done"] })
   })
@@ -27,12 +27,12 @@ describe("LIFE-01: CLI pipe mode lifecycle", () => {
     const logPath = join(tmpDir, "runtime.jsonl")
     const env = {
       ...process.env,
-      DEEPICODE_PROVIDER: "deepseek",
+      DEEPREEF_PROVIDER: "deepseek",
       DEEPSEEK_BASE_URL: sse.url,
       DEEPSEEK_API_KEY: "test-key-must-not-appear",
       HOME: tmpDir,
-      DEEPICODE_LOG_LEVEL: "debug",
-      DEEPICODE_LOG_FILE: logPath,
+      DEEPREEF_LOG_LEVEL: "debug",
+      DEEPREEF_LOG_FILE: logPath,
     }
 
     const proc = spawn("bun", [CLI_ENTRY], {

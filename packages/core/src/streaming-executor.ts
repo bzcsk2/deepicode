@@ -1,6 +1,6 @@
 import type { AgentTool, LoopEvent, ToolContext, ToolResult, ToolProgressUpdate } from "./interface.js"
 import type { ToolCall } from "./types.js"
-import type { PermissionEngine, HookManager } from "@deepicode/security"
+import type { PermissionEngine, HookManager } from "@deepreef/security"
 import { type ResultPersistenceConfig } from "./result-persistence.js"
 import { noopRuntimeLogger, type RuntimeLogger } from "./runtime-logger.js"
 import { evaluatePermission, createSettleLedger, createProgressQueue, applyResultPersistence, parseToolCallArgs } from "./executor-helpers.js"

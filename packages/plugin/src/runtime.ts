@@ -3,9 +3,9 @@ import { readPluginConfig, type PluginConfigError } from "./config.js"
 import { loadPlugins, type PluginLoaded, type PluginLoadError } from "./loader.js"
 import { extractToolsFromPlugins, pluginToolsToToolSpecs, type PluginTool, type PluginToolError } from "./tool-adapter.js"
 import { PluginHookRegistry } from "./hook-adapter.js"
-import type { HookManager } from "@deepicode/security"
-import type { AgentDefinition, ToolSpec } from "@deepicode/core"
-import { resolve } from "node:path"
+import type { HookManager, ToolCallHooks } from "@deepreef/security"
+import type { AgentDefinition, ToolSpec } from "@deepreef/core"
+import { resolve, dirname, basename } from "node:path"
 import { resolveContentPack } from "./content-pack/resolver.js"
 import { isDirectory } from "./content-pack/discovery.js"
 import { parseEccAgentMarkdown } from "./content-pack/agent-parser.js"
@@ -14,7 +14,9 @@ import { parseEccHooks } from "./content-pack/hook-bridge.js"
 import type { BridgedHook } from "./content-pack/hook-bridge.js"
 import { convertCommandsToSkills } from "./content-pack/command-to-skill.js"
 import type { CommandSkillEntry } from "./content-pack/command-to-skill.js"
-import type { ResolvedContentPack, ContentPackDiagnostic, ContentPackPluginOptions } from "./content-pack/types.js"
+import { createEccHookAdapter } from "./content-pack/ecc-hook-adapter.js"
+import { clearEccHookState } from "./content-pack/ecc-hook-adapter.js"
+import type { ResolvedContentPack, ContentPackDiagnostic, ContentPackPluginOptions, ContentAsset } from "./content-pack/types.js"
 
 export interface PluginRuntimeOptions {
   workspaceRoot?: string
@@ -49,6 +51,7 @@ export class PluginRuntime {
   private pluginTools: PluginTool[] = []
   private contentPacks: ResolvedContentPack[] = []
   private hookRegistry = new PluginHookRegistry()
+  private eccHookAdapters: ToolCallHooks[] = []
   private errors: PluginRuntimeError[] = []
   private diagnostics: string[] = []
   private options: PluginRuntimeOptions
@@ -61,7 +64,7 @@ export class PluginRuntime {
     if (this.initialized) return
 
     const workspaceRoot = this.options.workspaceRoot ?? process.cwd()
-    const configPath = this.options.configPath ?? resolve(workspaceRoot, ".deepicode", "plugins.json")
+    const configPath = this.options.configPath ?? resolve(workspaceRoot, ".deepreef", "plugins.json")
 
     const configResult = readPluginConfig(configPath)
     if (configResult.errors.length > 0) {
@@ -113,11 +116,36 @@ export class PluginRuntime {
       }
     }
 
+    // Register ECC hooks if hookManager is available
+    if (this.options.hookManager) {
+      this.registerEccHooks()
+    }
+
     this.initialized = true
   }
 
   getToolSpecs(): ToolSpec[] {
     return pluginToolsToToolSpecs(this.pluginTools)
+  }
+
+  private registerEccHooks(): void {
+    const workspaceRoot = this.options.workspaceRoot ?? process.cwd()
+    const hookManager = this.options.hookManager
+    if (!hookManager) return
+
+    for (const cp of this.contentPacks) {
+      const adapter = createEccHookAdapter(cp, workspaceRoot, {
+        hookManager,
+        hookTimeoutMs: this.options.hookTimeoutMs,
+        diagnosticCallback: (diag) => {
+          this.diagnostics.push(`[${diag.type}] ${diag.pluginId}: ${diag.message}${diag.detail ? " (" + diag.detail + ")" : ""}`)
+        },
+      })
+      if (adapter) {
+        hookManager.addHooks(adapter)
+        this.eccHookAdapters.push(adapter)
+      }
+    }
   }
 
   getTools(): PluginTool[] {
@@ -133,15 +161,43 @@ export class PluginRuntime {
   }
 
   getSkillDirs(): string[] {
-    const dirs: string[] = []
+    // Return only non-ECC skill directories (currently none).
+    // ECC skills are loaded as preloaded skills via getSkillDefs().
+    // This prevents loadSkillsDirs from loading ALL skills from
+    // a parent directory, bypassing selective install.
+    return []
+  }
+
+  /**
+   * Load ECC skills as full SkillDef objects.
+   * Each skill directory's SKILL.md is parsed directly,
+   * and source metadata is attached for namespace conflict resolution.
+   */
+  loadSkillDefs(): Array<{ name: string; description: string; content: string; source: { pluginId?: string; path: string } }> {
+    const defs: Array<{ name: string; description: string; content: string; source: { pluginId?: string; path: string } }> = []
     for (const cp of this.contentPacks) {
       for (const skill of cp.assets.skills) {
-        if (skill.path.endsWith("/skills") || !skill.path.includes(".")) {
-          dirs.push(skill.path)
+        try {
+          const skillFile = resolve(skill.path, "SKILL.md")
+          const raw = readFileSync(skillFile, "utf8")
+          const { frontmatter, body } = parseSkillFrontmatter(raw)
+          const name = (frontmatter.name as string) ?? basename(skill.path)
+          const desc = (frontmatter.description as string) ?? ""
+          defs.push({
+            name,
+            description: desc || name,
+            content: body,
+            source: {
+              pluginId: cp.name,
+              path: skill.path,
+            },
+          })
+        } catch {
+          this.diagnostics.push(`[warn] Failed to load skill ${skill.id}: SKILL.md not found`)
         }
       }
     }
-    return dirs
+    return defs
   }
 
   getAgentAssets() {
@@ -172,21 +228,73 @@ export class PluginRuntime {
     return agents
   }
 
-  compileRules(): { systemPrompt: string; count: number; warnings: string[] } {
-    const rules = this.getRuleAssets()
-    if (rules.length === 0) return { systemPrompt: "", count: 0, warnings: [] }
-    const result = compileRules(rules)
+  compileRules(): { systemPrompt: string; count: number; warnings: string[]; skillRules: CommandSkillEntry[] } {
+    const allRules: ContentAsset[] = []
+    const skillRules: CommandSkillEntry[] = []
+
+    for (const cp of this.contentPacks) {
+      const mode = cp.options.rules?.mode ?? "system"
+      const enabled = cp.options.rules?.enabled !== false
+
+      if (!enabled || mode === "off") continue
+
+      if (mode === "skill") {
+        // Convert rules to skills
+        for (const rule of cp.assets.rules) {
+          try {
+            const content = readFileSync(rule.path, "utf8")
+            const body = content.trim().startsWith("---")
+              ? content.trim().replace(/^---\n[\s\S]*?\n---\n?/, "").trim()
+              : content.trim()
+            if (body) {
+              skillRules.push({
+                name: `ecc-rule:${rule.id}`,
+                description: `Rule from ${cp.name}`,
+                content: `**Source:** ${cp.name}\n\n${body}`,
+              })
+            }
+          } catch {
+            // skip unreadable rules in skill mode
+          }
+        }
+      } else {
+        // mode === "system" (default)
+        allRules.push(...cp.assets.rules)
+      }
+    }
+
+    if (allRules.length === 0 && skillRules.length === 0) {
+      return { systemPrompt: "", count: 0, warnings: [], skillRules }
+    }
+
+    const result = compileRules(allRules)
     for (const w of result.warnings) {
       this.diagnostics.push(`[warn] ${w}`)
     }
-    return { systemPrompt: result.systemPrompt, count: result.count, warnings: result.warnings }
+    return {
+      systemPrompt: result.systemPrompt,
+      count: result.count,
+      warnings: result.warnings,
+      skillRules,
+    }
   }
 
   loadCommandSkills(): CommandSkillEntry[] {
     const skills: CommandSkillEntry[] = []
     for (const cp of this.contentPacks) {
+      const enabled = cp.options.commands?.enabled === true
+      const mode = cp.options.commands?.mode ?? "off"
+
+      if (!enabled || mode !== "skill") continue
+
       const result = convertCommandsToSkills(cp.assets.commands)
-      skills.push(...result.skills)
+      // Add source info
+      for (const s of result.skills) {
+        skills.push({
+          ...s,
+          description: `${s.description} [${cp.name}]`,
+        })
+      }
       for (const w of result.warnings) {
         this.diagnostics.push(`[warn] ${w}`)
       }
@@ -210,38 +318,120 @@ export class PluginRuntime {
   loadMcpConfigs(): Array<{ name: string; command: string; args?: string[]; env?: Record<string, string> }> {
     const configs: Array<{ name: string; command: string; args?: string[]; env?: Record<string, string> }> = []
     for (const cp of this.contentPacks) {
+      const mcpOptions = cp.options.mcp ?? {}
+
+      // MCP disabled by default
+      if (mcpOptions.enabled !== true) {
+        for (const asset of cp.assets.mcp) {
+          this.diagnostics.push(`[info] MCP disabled: skipping "${asset.id}" from ${cp.name}`)
+        }
+        continue
+      }
+
       for (const asset of cp.assets.mcp) {
         try {
-          const raw = readFileSync(asset.path, "utf8")
-          const parsed = JSON.parse(raw)
-          const servers = parsed.mcpServers ?? {}
+          // Handle inline MCP configs (from plugin manifests)
+          let servers: Record<string, unknown> = {}
+
+          if (asset.path.startsWith("__inline__:")) {
+            const manifestPath = asset.path.replace("__inline__:", "")
+            try {
+              const manifestRaw = readFileSync(manifestPath, "utf8")
+              const manifestJson = JSON.parse(manifestRaw)
+              if (typeof manifestJson.mcpServers === "object" && !Array.isArray(manifestJson.mcpServers)) {
+                servers = manifestJson.mcpServers as Record<string, unknown>
+              }
+            } catch {
+              this.diagnostics.push(`[warn] Failed to parse inline MCP config from ${asset.path}`)
+              continue
+            }
+          } else {
+            // Standard .mcp.json file
+            const raw = readFileSync(asset.path, "utf8")
+            const parsed = JSON.parse(raw)
+            servers = (parsed.mcpServers ?? {}) as Record<string, unknown>
+          }
+
           for (const [name, cfg] of Object.entries(servers)) {
+            if (typeof cfg !== "object" || cfg === null) {
+              this.diagnostics.push(`[warn] MCP server "${name}" in ${asset.path} is not a valid object, skipping`)
+              continue
+            }
             const server = cfg as Record<string, unknown>
             const command = server.command as string | undefined
+
             if (!command) {
               this.diagnostics.push(`[warn] MCP server "${name}" in ${asset.path} missing command, skipping`)
               continue
             }
-            if (!command.startsWith("node ") && !command.startsWith("bun ") && !command.includes("/") && !command.startsWith(".")) {
-              this.diagnostics.push(`[warn] MCP server "${name}" command "${command}" is not stdio-safe, skipping`)
+
+            // === Security Checks ===
+
+            // Check servers whitelist
+            if (mcpOptions.servers && mcpOptions.servers.length > 0) {
+              if (!mcpOptions.servers.includes(name)) {
+                this.diagnostics.push(`[info] MCP server "${name}" not in whitelist, skipping`)
+                continue
+              }
+            }
+
+            // Check allowStdio — basic stdio safety
+            if (mcpOptions.allowStdio === false && (command.startsWith("node ") || command.startsWith("bun ") || command.includes("/") || command.startsWith("."))) {
+              this.diagnostics.push(`[info] MCP server "${name}" stdio disabled by policy, skipping`)
               continue
             }
-            // Skip known unsafe patterns
+
             const args = (server.args as string[]) ?? []
             const env = (server.env as Record<string, string>) ?? {}
             const fullCmd = [command, ...args].join(" ")
-            if (fullCmd.includes("http://") || fullCmd.includes("https://") || fullCmd.startsWith("npx ") || fullCmd.startsWith("uvx ")) {
-              this.diagnostics.push(`[info] MCP server "${name}" uses HTTP/npx/uvx transport (${fullCmd.slice(0, 60)}), skipping`)
-              continue
+
+            // Check allowHttp
+            if (mcpOptions.allowHttp !== true) {
+              if (fullCmd.includes("http://") || fullCmd.includes("https://")) {
+                this.diagnostics.push(`[info] MCP server "${name}" HTTP transport disabled by policy, skipping`)
+                continue
+              }
             }
-            // Check for placeholder env vars (e.g. YOUR_API_KEY_HERE)
-            const hasPlaceholder = Object.values(env).some(v =>
-              typeof v === "string" && (v.includes("YOUR_") || v.includes("your-") || v.includes("<") && v.includes(">"))
+
+            // Check allowNpx
+            if (mcpOptions.allowNpx !== true) {
+              if (fullCmd.startsWith("npx ") || fullCmd.startsWith("npx -y ") || fullCmd.startsWith("uvx ")) {
+                this.diagnostics.push(`[info] MCP server "${name}" npx/uvx transport disabled by policy, skipping`)
+                continue
+              }
+            }
+
+            // Check allowPlaceholderEnv
+            if (mcpOptions.allowPlaceholderEnv !== true) {
+              const hasPlaceholder = Object.entries(env).some(([_k, v]) => {
+                if (typeof v !== "string") return false
+                const upper = v.toUpperCase()
+                return upper.includes("YOUR_")
+                  || upper.includes("_HERE")
+                  || upper.includes("PLACEHOLDER")
+                  || (v.includes("<") && v.includes(">"))
+                  || upper.includes("<TOKEN>") || upper.includes("<KEY>")
+              })
+              if (hasPlaceholder) {
+                this.diagnostics.push(`[info] MCP server "${name}" has placeholder env vars, skipping`)
+                continue
+              }
+            }
+
+            // Also check env values for placeholder patterns
+            const hasEnvPlaceholder = Object.values(env).some(v =>
+              typeof v === "string" && (
+                v.toUpperCase().includes("YOUR_") ||
+                v.toUpperCase().includes("_HERE") ||
+                v.toUpperCase().includes("PLACEHOLDER") ||
+                (v.includes("<") && v.includes(">"))
+              )
             )
-            if (hasPlaceholder) {
-              this.diagnostics.push(`[info] MCP server "${name}" has placeholder env vars, skipping`)
+            if (hasEnvPlaceholder && mcpOptions.allowPlaceholderEnv !== true) {
+              this.diagnostics.push(`[info] MCP server "${name}" has placeholder env values, skipping`)
               continue
             }
+
             configs.push({ name: `${cp.name}:${name}`, command, args, env })
           }
         } catch (e) {
@@ -277,6 +467,15 @@ export class PluginRuntime {
 
   dispose(): void {
     if (this.options.hookManager) {
+      // Remove ECC hook adapters first
+      for (const adapter of this.eccHookAdapters) {
+        this.options.hookManager.removeHooks(adapter)
+      }
+      this.eccHookAdapters = []
+      // Clear lifecycle state for each content pack
+      for (const cp of this.contentPacks) {
+        clearEccHookState(cp)
+      }
       this.hookRegistry.dispose(this.options.hookManager)
     }
     this.loadedPlugins = []
@@ -290,4 +489,26 @@ export class PluginRuntime {
 
 export function createPluginRuntime(options?: PluginRuntimeOptions): PluginRuntime {
   return new PluginRuntime(options)
+}
+
+const SKILL_FRONTMATTER_RE = /^---\n([\s\S]+?)\n---\n([\s\S]*)$/
+
+function parseSkillFrontmatter(raw: string): { frontmatter: Record<string, unknown>; body: string } {
+  const match = raw.match(SKILL_FRONTMATTER_RE)
+  if (!match) return { frontmatter: {}, body: raw }
+  const frontmatter: Record<string, unknown> = {}
+  for (const line of match[1].split("\n")) {
+    const colon = line.indexOf(":")
+    if (colon > 0) {
+      const key = line.slice(0, colon).trim()
+      let val: unknown = line.slice(colon + 1).trim()
+      const strVal = val as string
+      if (strVal.startsWith('"') && strVal.endsWith('"')) val = strVal.slice(1, -1)
+      else if (strVal.startsWith("'") && strVal.endsWith("'")) val = strVal.slice(1, -1)
+      else if (strVal === "true") val = true
+      else if (strVal === "false") val = false
+      frontmatter[key] = val
+    }
+  }
+  return { frontmatter, body: match[2].trim() }
 }

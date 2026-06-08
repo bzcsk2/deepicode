@@ -14,7 +14,7 @@ function sha256(s: string): string {
 }
 
 function tempDir(): string {
-  return mkdtempSync(join(tmpdir(), "deepicode-edit-test-"))
+  return mkdtempSync(join(tmpdir(), "deepreef-edit-test-"))
 }
 
 describe("hashAnchoredReplaceOnce", () => {
@@ -201,7 +201,7 @@ describe("fuzzyReplaceOnce", () => {
 describe("edit tool stale-read integration", () => {
   let tmpDir: string
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "deepicode-stale-edit-"))
+    tmpDir = mkdtempSync(join(tmpdir(), "deepreef-stale-edit-"))
     clearReadTracker()
   })
   afterEach(() => {
@@ -340,7 +340,7 @@ describe("CL-12: Hash edit sampling and stream close", () => {
   let dir: string
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "deepicode-cl12-"))
+    dir = mkdtempSync(join(tmpdir(), "deepreef-cl12-"))
   })
 
   afterEach(() => {

@@ -6,8 +6,8 @@
  *
  * 使用方法：
  * 1. 将此文件复制到你的项目中
- * 2. 在 .deepicode/plugins.json 中添加此插件路径
- * 3. 重启 deepicode
+ * 2. 在 .deepreef/plugins.json 中添加此插件路径
+ * 3. 重启 deepreef
  */
 
 export default {
@@ -15,7 +15,7 @@ export default {
 
   server: () => ({
     greet: async (args: { name: string }) => {
-      return `Hello, ${args.name}! Welcome to deepicode!`
+      return `Hello, ${args.name}! Welcome to deepreef!`
     },
 
     time: async () => {

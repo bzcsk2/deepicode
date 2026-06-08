@@ -1,8 +1,8 @@
-# Deepicode 运行日志诊断指南
+# Deepreef 运行日志诊断指南
 
 最后更新：2026-06-02
 
-本文档提供查看和诊断 Deepicode 运行日志的完整方法。
+本文档提供查看和诊断 Deepreef 运行日志的完整方法。
 
 ---
 
@@ -12,23 +12,23 @@
 
 ```bash
 # 最简方式：开启 debug 级别日志
-DEEPICODE_LOG_LEVEL=debug deepicode
+DEEPREEF_LOG_LEVEL=debug deepreef
 
 # 或使用 CLI 参数
-deepicode --debug
+deepreef --debug
 ```
 
 ### 1.2 查看日志
 
 ```bash
 # 查看当天日志
-cat .deepicode/logs/runtime-$(date +%Y-%m-%d).jsonl
+cat .deepreef/logs/runtime-$(date +%Y-%m-%d).jsonl
 
 # 实时跟踪
-tail -f .deepicode/logs/runtime-*.jsonl
+tail -f .deepreef/logs/runtime-*.jsonl
 
 # 使用 jq 格式化
-cat .deepicode/logs/runtime-*.jsonl | jq .
+cat .deepreef/logs/runtime-*.jsonl | jq .
 ```
 
 ---
@@ -37,14 +37,14 @@ cat .deepicode/logs/runtime-*.jsonl | jq .
 
 | 变量 | 作用 | 默认值 | 示例 |
 |------|------|--------|------|
-| `DEEPICODE_LOG_LEVEL` | 日志级别 | 未设置（关闭） | `debug`, `info`, `warn`, `error`, `off` |
-| `DEEPICODE_LOG_FILE` | 日志文件路径 | `.deepicode/logs/runtime-YYYY-MM-DD.jsonl` | `/tmp/deepicode.log` |
-| `DEEPICODE_LOG_FILTER` | 事件名过滤 | 未设置（全部） | `api.*,tool.*` |
-| `DEEPICODE_LOG_RETENTION_DAYS` | 保留天数 | `7` | `30` |
-| `DEEPICODE_LOG_MAX_TOTAL_MB` | 最大总大小 | `100` | `500` |
-| `DEEPICODE_LOG_SYMLINK` | 创建 latest 链接 | 未设置 | `1` |
-| `DEEPICODE_TUI_DEBUG` | TUI 诊断 | 未设置 | `1` |
-| `DEEPICODE_TRACE` | Perfetto 追踪 | 未设置 | `1` |
+| `DEEPREEF_LOG_LEVEL` | 日志级别 | 未设置（关闭） | `debug`, `info`, `warn`, `error`, `off` |
+| `DEEPREEF_LOG_FILE` | 日志文件路径 | `.deepreef/logs/runtime-YYYY-MM-DD.jsonl` | `/tmp/deepreef.log` |
+| `DEEPREEF_LOG_FILTER` | 事件名过滤 | 未设置（全部） | `api.*,tool.*` |
+| `DEEPREEF_LOG_RETENTION_DAYS` | 保留天数 | `7` | `30` |
+| `DEEPREEF_LOG_MAX_TOTAL_MB` | 最大总大小 | `100` | `500` |
+| `DEEPREEF_LOG_SYMLINK` | 创建 latest 链接 | 未设置 | `1` |
+| `DEEPREEF_TUI_DEBUG` | TUI 诊断 | 未设置 | `1` |
+| `DEEPREEF_TRACE` | Perfetto 追踪 | 未设置 | `1` |
 
 ---
 
@@ -52,10 +52,10 @@ cat .deepicode/logs/runtime-*.jsonl | jq .
 
 | 参数 | 作用 | 示例 |
 |------|------|------|
-| `--debug` / `-d` | 开启 debug 级别 | `deepicode --debug` |
-| `--debug=<pattern>` | 开启 debug 并过滤 | `deepicode --debug=api.*` |
-| `--debug-file=<path>` | 指定日志文件 | `deepicode --debug-file=/tmp/debug.log` |
-| `--trace` | 开启 Perfetto 追踪 | `deepicode --trace` |
+| `--debug` / `-d` | 开启 debug 级别 | `deepreef --debug` |
+| `--debug=<pattern>` | 开启 debug 并过滤 | `deepreef --debug=api.*` |
+| `--debug-file=<path>` | 指定日志文件 | `deepreef --debug-file=/tmp/debug.log` |
+| `--trace` | 开启 Perfetto 追踪 | `deepreef --trace` |
 
 **优先级：** CLI 参数 > 环境变量 > 默认关闭
 
@@ -147,10 +147,10 @@ cat .deepicode/logs/runtime-*.jsonl | jq .
 
 ```bash
 # 查看 TTFT（首 token 时间）
-cat .deepicode/logs/runtime-*.jsonl | jq 'select(.event == "api.stream.first_event") | {ttftMs, model}'
+cat .deepreef/logs/runtime-*.jsonl | jq 'select(.event == "api.stream.first_event") | {ttftMs, model}'
 
 # 查看所有 API 耗时
-cat .deepicode/logs/runtime-*.jsonl | jq 'select(.event == "api.stream.done") | {durationMs, finishReason}'
+cat .deepreef/logs/runtime-*.jsonl | jq 'select(.event == "api.stream.done") | {durationMs, finishReason}'
 ```
 
 **正常范围：**
@@ -161,34 +161,34 @@ cat .deepicode/logs/runtime-*.jsonl | jq 'select(.event == "api.stream.done") | 
 
 ```bash
 # 查看失败的工具
-cat .deepicode/logs/runtime-*.jsonl | jq 'select(.event == "tool.execute.done" and .isError == true) | {toolName, durationMs}'
+cat .deepreef/logs/runtime-*.jsonl | jq 'select(.event == "tool.execute.done" and .isError == true) | {toolName, durationMs}'
 
 # 查看被拒绝的工具
-cat .deepicode/logs/runtime-*.jsonl | jq 'select(.event == "tool.execute.denied") | {toolName, permissionSource}'
+cat .deepreef/logs/runtime-*.jsonl | jq 'select(.event == "tool.execute.denied") | {toolName, permissionSource}'
 ```
 
 ### 6.3 重试和错误
 
 ```bash
 # 查看重试
-cat .deepicode/logs/runtime-*.jsonl | jq 'select(.event == "api.request.retry") | {attempt, status, delayMs}'
+cat .deepreef/logs/runtime-*.jsonl | jq 'select(.event == "api.request.retry") | {attempt, status, delayMs}'
 
 # 查看流式错误
-cat .deepicode/logs/runtime-*.jsonl | jq 'select(.event == "loop.stream.retry") | {consecutiveErrors, turnCount}'
+cat .deepreef/logs/runtime-*.jsonl | jq 'select(.event == "loop.stream.retry") | {consecutiveErrors, turnCount}'
 ```
 
 ### 6.4 推理模式切换
 
 ```bash
 # 查看模式切换
-cat .deepicode/logs/runtime-*.jsonl | jq 'select(.event == "reasoning.mode.switch") | {from, to, reason}'
+cat .deepreef/logs/runtime-*.jsonl | jq 'select(.event == "reasoning.mode.switch") | {from, to, reason}'
 ```
 
 ### 6.5 Token 用量统计
 
 ```bash
 # 汇总 Token 用量
-cat .deepicode/logs/runtime-*.jsonl | jq 'select(.event == "api.usage") | {promptTokens, completionTokens, costCNY}' | jq -s 'add'
+cat .deepreef/logs/runtime-*.jsonl | jq 'select(.event == "api.usage") | {promptTokens, completionTokens, costCNY}' | jq -s 'add'
 ```
 
 ---
@@ -199,36 +199,36 @@ cat .deepicode/logs/runtime-*.jsonl | jq 'select(.event == "api.usage") | {promp
 
 ```bash
 # 只看 API 相关事件
-DEEPICODE_LOG_FILTER=api.* deepicode
+DEEPREEF_LOG_FILTER=api.* deepreef
 
 # 只看工具相关事件
-DEEPICODE_LOG_FILTER=tool.* deepicode
+DEEPREEF_LOG_FILTER=tool.* deepreef
 
 # 多个过滤器
-DEEPICODE_LOG_FILTER=api.*,tool.*,loop.* deepicode
+DEEPREEF_LOG_FILTER=api.*,tool.*,loop.* deepreef
 ```
 
 ### 7.2 使用 CLI 过滤
 
 ```bash
 # 只看 API 事件
-deepicode --debug=api.*
+deepreef --debug=api.*
 
 # 只看工具事件
-deepicode --debug=tool.*
+deepreef --debug=tool.*
 ```
 
 ### 7.3 使用 jq 过滤
 
 ```bash
 # 只看 warn 和 error 级别
-cat .deepicode/logs/runtime-*.jsonl | jq 'select(.level == "warn" or .level == "error")'
+cat .deepreef/logs/runtime-*.jsonl | jq 'select(.level == "warn" or .level == "error")'
 
 # 只看特定会话
-cat .deepicode/logs/runtime-*.jsonl | jq 'select(.sessionId == "abc123")'
+cat .deepreef/logs/runtime-*.jsonl | jq 'select(.sessionId == "abc123")'
 
 # 只看特定时间范围
-cat .deepicode/logs/runtime-*.jsonl | jq 'select(.ts >= "2026-06-02T10:00:00Z" and .ts < "2026-06-02T11:00:00Z")'
+cat .deepreef/logs/runtime-*.jsonl | jq 'select(.ts >= "2026-06-02T10:00:00Z" and .ts < "2026-06-02T11:00:00Z")'
 ```
 
 ---
@@ -239,16 +239,16 @@ cat .deepicode/logs/runtime-*.jsonl | jq 'select(.ts >= "2026-06-02T10:00:00Z" a
 
 ```bash
 # 方式 1：环境变量
-DEEPICODE_TRACE=1 deepicode
+DEEPREEF_TRACE=1 deepreef
 
 # 方式 2：CLI 参数
-deepicode --trace
+deepreef --trace
 ```
 
 ### 8.2 查看追踪
 
-1. 运行 Deepicode 并执行一些操作
-2. 追踪文件保存在 `.deepicode/traces/trace-<session-id>.json`
+1. 运行 Deepreef 并执行一些操作
+2. 追踪文件保存在 `.deepreef/traces/trace-<session-id>.json`
 3. 打开 https://ui.perfetto.dev
 4. 拖拽或打开 trace 文件
 
@@ -280,7 +280,7 @@ Interaction
 日志按日期自动分文件：
 
 ```
-.deepicode/logs/
+.deepreef/logs/
   runtime-2026-06-01.jsonl
   runtime-2026-06-02.jsonl
   latest.jsonl -> runtime-2026-06-02.jsonl
@@ -290,20 +290,20 @@ Interaction
 
 ```bash
 # 保留 30 天
-DEEPICODE_LOG_RETENTION_DAYS=30 deepicode
+DEEPREEF_LOG_RETENTION_DAYS=30 deepreef
 
 # 最大 500MB
-DEEPICODE_LOG_MAX_TOTAL_MB=500 deepicode
+DEEPREEF_LOG_MAX_TOTAL_MB=500 deepreef
 ```
 
 ### 9.3 手动清理
 
 ```bash
 # 删除 7 天前的日志
-find .deepicode/logs -name "runtime-*.jsonl" -mtime +7 -delete
+find .deepreef/logs -name "runtime-*.jsonl" -mtime +7 -delete
 
 # 查看日志总大小
-du -sh .deepicode/logs/
+du -sh .deepreef/logs/
 ```
 
 ---
@@ -314,16 +314,16 @@ du -sh .deepicode/logs/
 
 **检查：**
 
-1. `DEEPICODE_LOG_LEVEL` 是否设置且不为 `off`
-2. `.deepicode/logs/` 目录是否有写入权限
+1. `DEEPREEF_LOG_LEVEL` 是否设置且不为 `off`
+2. `.deepreef/logs/` 目录是否有写入权限
 3. 磁盘空间是否充足
 
 ```bash
 # 验证环境变量
-echo $DEEPICODE_LOG_LEVEL
+echo $DEEPREEF_LOG_LEVEL
 
 # 检查目录权限
-ls -la .deepicode/logs/
+ls -la .deepreef/logs/
 
 # 检查磁盘空间
 df -h .
@@ -335,10 +335,10 @@ df -h .
 
 ```bash
 # 启用自动清理
-DEEPICODE_LOG_RETENTION_DAYS=7 DEEPICODE_LOG_MAX_TOTAL_MB=100 deepicode
+DEEPREEF_LOG_RETENTION_DAYS=7 DEEPREEF_LOG_MAX_TOTAL_MB=100 deepreef
 
 # 或手动清理
-find .deepicode/logs -name "runtime-*.jsonl" -mtime +3 -delete
+find .deepreef/logs -name "runtime-*.jsonl" -mtime +3 -delete
 ```
 
 ### 10.3 性能影响
@@ -349,28 +349,28 @@ find .deepicode/logs -name "runtime-*.jsonl" -mtime +3 -delete
 
 ```bash
 # 使用过滤减少日志量
-DEEPICODE_LOG_FILTER=api.*,tool.* deepicode
+DEEPREEF_LOG_FILTER=api.*,tool.* deepreef
 
 # 或降低日志级别
-DEEPICODE_LOG_LEVEL=warn deepicode
+DEEPREEF_LOG_LEVEL=warn deepreef
 ```
 
-### 10.4 旧版 DEEPICODE_DEBUG
+### 10.4 旧版 DEEPREEF_DEBUG
 
 **弃用提示：**
 
 ```
-[deprecated] DEEPICODE_DEBUG is deprecated. Use DEEPICODE_LOG_LEVEL=debug instead.
+[deprecated] DEEPREEF_DEBUG is deprecated. Use DEEPREEF_LOG_LEVEL=debug instead.
 ```
 
 **迁移方法：**
 
 ```bash
 # 旧方式（已弃用）
-DEEPICODE_DEBUG=1 deepicode
+DEEPREEF_DEBUG=1 deepreef
 
 # 新方式
-DEEPICODE_LOG_LEVEL=debug deepicode
+DEEPREEF_LOG_LEVEL=debug deepreef
 ```
 
 ---
@@ -381,30 +381,30 @@ DEEPICODE_LOG_LEVEL=debug deepicode
 
 ```bash
 # 输出到自定义路径
-DEEPICODE_LOG_FILE=/var/log/deepicode.jsonl deepicode
+DEEPREEF_LOG_FILE=/var/log/deepreef.jsonl deepreef
 
 # 同时开启 latest 链接
-DEEPICODE_LOG_FILE=/var/log/deepicode.jsonl DEEPICODE_LOG_SYMLINK=1 deepicode
+DEEPREEF_LOG_FILE=/var/log/deepreef.jsonl DEEPREEF_LOG_SYMLINK=1 deepreef
 ```
 
 ### 11.2 组合使用
 
 ```bash
 # 完整调试环境
-DEEPICODE_LOG_LEVEL=debug \
-DEEPICODE_LOG_FILTER=api.*,tool.*,loop.* \
-DEEPICODE_LOG_SYMLINK=1 \
-DEEPICODE_TRACE=1 \
-deepicode --debug
+DEEPREEF_LOG_LEVEL=debug \
+DEEPREEF_LOG_FILTER=api.*,tool.*,loop.* \
+DEEPREEF_LOG_SYMLINK=1 \
+DEEPREEF_TRACE=1 \
+deepreef --debug
 ```
 
 ### 11.3 分析脚本示例
 
 ```bash
 #!/bin/bash
-# analyze-logs.sh - 分析 Deepicode 日志
+# analyze-logs.sh - 分析 Deepreef 日志
 
-LOG_FILE=${1:-".deepicode/logs/runtime-$(date +%Y-%m-%d).jsonl"}
+LOG_FILE=${1:-".deepreef/logs/runtime-$(date +%Y-%m-%d).jsonl"}
 
 echo "=== API 请求统计 ==="
 cat "$LOG_FILE" | jq -r 'select(.event == "api.stream.done") | "\(.durationMs)ms \(.finishReason)"' | sort | uniq -c | sort -rn
@@ -432,4 +432,4 @@ cat "$LOG_FILE" | jq -s 'select(.[] | .event == "api.usage") | add | "Prompt: \(
 | `packages/core/src/perfetto-tracing.ts` | Perfetto 追踪实现 |
 | `packages/mcp/src/diagnostics.ts` | MCP 诊断接口 |
 | `packages/tui/src/diagnostics.ts` | TUI 诊断接口 |
-| `Deepicode-LogSystem-Migration-Plan.md` | 日志系统迁移方案 |
+| `Deepreef-LogSystem-Migration-Plan.md` | 日志系统迁移方案 |

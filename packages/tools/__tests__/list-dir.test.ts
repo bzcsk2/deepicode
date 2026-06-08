@@ -9,7 +9,7 @@ describe("list_dir", () => {
   const ctx = (cwd: string) => ({ cwd, signal: new AbortController().signal } as any)
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "deepicode-listdir-"))
+    tmpDir = mkdtempSync(join(tmpdir(), "deepreef-listdir-"))
     writeFileSync(join(tmpDir, "file.txt"), "hello", "utf-8")
     mkdirSync(join(tmpDir, "subdir"))
     writeFileSync(join(tmpDir, "subdir", "nested.txt"), "nested", "utf-8")
@@ -68,7 +68,7 @@ describe("list_dir", () => {
   })
 
   it("should return empty items array for empty directory", async () => {
-    const emptyDir = join(tmpdir(), `deepicode-empty-${Date.now()}`)
+    const emptyDir = join(tmpdir(), `deepreef-empty-${Date.now()}`)
     mkdirSync(emptyDir)
     const tool = createListDirTool()
     const r = await tool.execute({ path: emptyDir }, ctx(tmpDir))

@@ -17,8 +17,8 @@ const ctx = {
 
 describe("LSP Actions", () => {
   beforeEach(() => {
-    mkdirSync(join(ctx.cwd, ".deepicode"), { recursive: true })
-    writeFileSync(join(ctx.cwd, ".deepicode", "lsp.json"), JSON.stringify({
+    mkdirSync(join(ctx.cwd, ".deepreef"), { recursive: true })
+    writeFileSync(join(ctx.cwd, ".deepreef", "lsp.json"), JSON.stringify({
       languages: {
         typescript: { command: process.execPath, args: [fakeLspPath] },
       },

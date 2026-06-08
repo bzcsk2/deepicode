@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Text, useInput } from '@deepicode/ink';
-import { createSkillTool } from '@deepicode/tools';
+import { Box, Text, useInput } from '@deepreef/ink';
+import { createSkillTool } from '@deepreef/tools';
 import { ModalShell } from './ModalShell.js';
 import { FG, TONE } from './reasonix/tokens.js';
 

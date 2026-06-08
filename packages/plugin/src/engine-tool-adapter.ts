@@ -1,4 +1,4 @@
-import type { AgentTool } from "@deepicode/core"
+import type { AgentTool } from "@deepreef/core"
 import type { PluginTool } from "./tool-adapter.js"
 import { executePluginTool } from "./tool-adapter.js"
 

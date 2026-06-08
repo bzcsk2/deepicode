@@ -1,6 +1,6 @@
 import type { AgentTool, ToolResult, ToolProgressUpdate } from "./interface.js"
 import type { ToolCall } from "./types.js"
-import type { PermissionEngine, HookManager, PermissionDecision } from "@deepicode/security"
+import type { PermissionEngine, HookManager, PermissionDecision } from "@deepreef/security"
 import { maybePersistResult, type ResultPersistenceConfig } from "./result-persistence.js"
 import { type RuntimeLogger } from "./runtime-logger.js"
 import { repairToolArguments } from "./context/repair.js"

@@ -76,8 +76,8 @@ describe("ST2: Engine tier integration", () => {
   let tmpDir: string
 
   beforeEach(async () => {
-    tmpDir = join(tmpdir(), `deepicode-st2-${Date.now()}-${Math.random().toString(36).slice(2)}`)
-    const sessDir = join(tmpDir, ".deepicode", "sessions")
+    tmpDir = join(tmpdir(), `deepreef-st2-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    const sessDir = join(tmpDir, ".deepreef", "sessions")
     await mkdir(sessDir, { recursive: true })
     const { SessionLoader } = await import("../src/session.js")
     SessionLoader.sessionDir = sessDir

@@ -1,4 +1,4 @@
-import type { AgentTool } from "@deepicode/core"
+import type { AgentTool } from "@deepreef/core"
 import { safeStringify } from "./safe-stringify.js"
 import { listJobs, createJob, deleteJob as schedulerDeleteJob, normalizePlatform } from "./platform/scheduler-backend.js"
 

@@ -7,8 +7,8 @@ import { clearShellBackendCache, defaultShellCandidates, resolveShellBackend, se
 
 describe("OS-10: platform capabilities", () => {
   afterEach(() => {
-    delete process.env.DEEPICODE_SHELL
-    delete process.env.DEEPICODE_SHELL_ARGS
+    delete process.env.DEEPREEF_SHELL
+    delete process.env.DEEPREEF_SHELL_ARGS
     clearShellBackendCache()
     setShellBackendLogger(noopToolDiagnosticLogger)
   })
@@ -43,7 +43,7 @@ describe("OS-10: platform capabilities", () => {
   })
 
   it("rejects an unavailable explicit shell override", async () => {
-    process.env.DEEPICODE_SHELL = "deepicode-shell-that-does-not-exist"
+    process.env.DEEPREEF_SHELL = "deepreef-shell-that-does-not-exist"
     await expect(resolveShellBackend("linux")).rejects.toThrow("not available")
   })
 

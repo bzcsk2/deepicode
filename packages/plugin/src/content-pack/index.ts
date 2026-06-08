@@ -4,7 +4,7 @@ export type {
   ContentAsset,
   ResolvedContentPack,
   ContentPackPluginOptions,
-  InstallProfile,
+  InstallProfileEntry,
   InstallProfiles,
   InstallModule,
   InstallModules,

@@ -1,4 +1,4 @@
-import type { AgentTool } from "@deepicode/core"
+import type { AgentTool } from "@deepreef/core"
 
 import { ToolRegistry } from "./registry.js"
 import { createReadFileTool } from "./file-ops.js"
@@ -12,6 +12,7 @@ import { createGlobTool } from "./glob.js"
 import { createWebFetchTool } from "./web-fetch.js"
 import { createWebSearchTool } from "./web-search.js"
 import { createSkillTool } from "./skills/index.js"
+import type { SkillDef } from "./skills/index.js"
 import { createNotebookEditTool } from "./notebook-edit.js"
 import { createSleepTool } from "./sleep.js"
 import { createPushNotificationTool } from "./push-notification.js"
@@ -81,13 +82,14 @@ export {
   terminateProcessTree,
 }
 export type { TaskItem }
+export type { SkillDef } from "./skills/index.js"
 
 /**
  * CL-41: Factory function that creates the default built-in tool set.
  * Preserves construction order (matches system prompt tool spec ordering).
  * MCP dynamic tools are registered separately by the CLI/host.
  */
-export function createDefaultTools(skillDirs?: string[]): AgentTool[] {
+export function createDefaultTools(skillDirs?: string[], preloadedSkills?: SkillDef[]): AgentTool[] {
   return [
     createReadFileTool(),
     createBashTool(),
@@ -99,7 +101,7 @@ export function createDefaultTools(skillDirs?: string[]): AgentTool[] {
     createGlobTool(),
     createWebFetchTool(),
     createWebSearchTool(),
-    createSkillTool({ skillDirs }),
+    createSkillTool({ skillDirs, preloadedSkills }),
     createTaskCreateTool(),
     createTaskUpdateTool(),
     createTaskListTool(),

@@ -3,7 +3,7 @@ import { ReasonixEngine } from "../src/engine.js"
 import { ContextManager } from "../src/context/manager.js"
 import { FakeSummarizer, MechanicalSummarizer } from "../src/context/summarizer.js"
 import { MockSseServer } from "../src/test-utils/mock-sse-server.js"
-import type { DeepicodeConfig } from "../src/config.js"
+import type { DeepreefConfig } from "../src/config.js"
 import type { ContextPolicy } from "../src/context/policy.js"
 import { mkdtempSync } from "node:fs"
 import { rm } from "node:fs/promises"
@@ -15,7 +15,7 @@ let testCwd: string
 
 beforeEach(() => {
   originalCwd = process.cwd()
-  testCwd = mkdtempSync(join(tmpdir(), "deepicode-context-policy-"))
+  testCwd = mkdtempSync(join(tmpdir(), "deepreef-context-policy-"))
   process.chdir(testCwd)
 })
 
@@ -106,7 +106,7 @@ vi.mock("../src/runtime-logger.js", () => ({
 
 describe("ReasonixEngine context policy", () => {
   let engine: ReasonixEngine
-  const defaultConfig: DeepicodeConfig = {
+  const defaultConfig: DeepreefConfig = {
     provider: "deepseek",
     model: "deepseek-chat",
     apiKey: "test-key",
@@ -190,7 +190,7 @@ describe("ReasonixEngine context policy", () => {
 describe("ReasonixEngine submit with context policy", () => {
   let engine: ReasonixEngine
   let server: MockSseServer
-  const smallContextConfig: DeepicodeConfig = {
+  const smallContextConfig: DeepreefConfig = {
     provider: "deepseek",
     model: "deepseek-chat",
     apiKey: "test-key",

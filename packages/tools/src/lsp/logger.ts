@@ -1,4 +1,4 @@
-import type { RuntimeLogger } from "@deepicode/core"
+import type { RuntimeLogger } from "@deepreef/core"
 
 export interface LspLogContext {
   sessionId?: string

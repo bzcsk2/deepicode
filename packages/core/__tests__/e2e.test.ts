@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { ReasonixEngine } from "../src/engine.js"
 import type { LoopEvent } from "../src/interface.js"
-import { createWriteFileTool } from "@deepicode/tools"
-import { createReadFileTool } from "@deepicode/tools"
-import { createEditTool } from "@deepicode/tools"
-import { createBashTool } from "@deepicode/tools"
+import { createWriteFileTool } from "@deepreef/tools"
+import { createReadFileTool } from "@deepreef/tools"
+import { createEditTool } from "@deepreef/tools"
+import { createBashTool } from "@deepreef/tools"
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -109,7 +109,7 @@ describe("TT2: E2E tool chains through engine", () => {
     const filePath = join(tmpDir, "edit-me.txt")
     mockClient.setGenerators([
       genWrite(filePath, "hello world"),
-      genEdit(filePath, "world", "deepicode"),
+      genEdit(filePath, "world", "deepreef"),
       genRead(filePath),
       genText("done"),
     ])
@@ -119,13 +119,13 @@ describe("TT2: E2E tool chains through engine", () => {
     engine.registerTool(createReadFileTool())
     const events: LoopEvent[] = []
     for await (const e of engine.submit("write edit read")) events.push(e)
-    expect(readFileSync(filePath, "utf-8")).toBe("hello deepicode")
+    expect(readFileSync(filePath, "utf-8")).toBe("hello deepreef")
     const tools = events.filter((e) => e.role === "tool")
     expect(tools).toHaveLength(3)
     expect(tools[0].toolName).toBe("write_file")
     expect(tools[1].toolName).toBe("edit")
     expect(tools[2].toolName).toBe("read_file")
-    expect(tools[2].content).toContain("hello deepicode")
+    expect(tools[2].content).toContain("hello deepreef")
   })
 
   it("bash execution through engine", async () => {

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { Box, Text, useInput } from '@deepicode/ink';
+import { Box, Text, useInput } from '@deepreef/ink';
 import { t } from './i18n/index.js';
 import { FG, SURFACE, TONE } from './reasonix/tokens.js';
 

@@ -23,16 +23,17 @@ export interface EccHookManifest {
   }
 }
 
-export type DeepicodeHookPhase = "beforeToolUse" | "afterToolUse" | "onGenerationComplete" | "onStartup" | "onShutdown"
+export type DeepreefHookPhase = "beforeToolUse" | "afterToolUse" | "onGenerationComplete" | "onStartup" | "onShutdown"
 
 export interface BridgedHook {
-  phase: DeepicodeHookPhase
+  id: string
+  phase: DeepreefHookPhase
   toolMatcher: string
   command: string
   timeout?: number
 }
 
-const PHASE_MAP: Record<string, DeepicodeHookPhase> = {
+const PHASE_MAP: Record<string, DeepreefHookPhase> = {
   PreToolUse: "beforeToolUse",
   PostToolUse: "afterToolUse",
   PostToolUseFailure: "afterToolUse",
@@ -51,14 +52,15 @@ export function parseEccHooks(filePath: string): { hooks: BridgedHook[]; warning
     }
     const bridged: BridgedHook[] = []
     for (const [eccPhase, entries] of Object.entries(manifest.hooks)) {
-      const deepicodePhase = PHASE_MAP[eccPhase]
-      if (!deepicodePhase) {
+      const deepreefPhase = PHASE_MAP[eccPhase]
+      if (!deepreefPhase) {
         warnings.push(`Unknown ECC hook phase "${eccPhase}", skipping`)
         continue
       }
       if (!Array.isArray(entries)) continue
       for (const entry of entries) {
         const matcher = entry.matcher ?? "*"
+        const entryId = entry.id // Hook ID is on the outer entry, not the inner hook
         const hooks = entry.hooks ?? []
         for (const hook of hooks) {
           if (hook.type !== "command") {
@@ -66,8 +68,15 @@ export function parseEccHooks(filePath: string): { hooks: BridgedHook[]; warning
             continue
           }
           if (!hook.command) continue
+          // Use entry.id as primary ID, fall back to inner hook.id
+          const hookId = entryId
+            ? `ecc:${entryId}`
+            : hook.id
+              ? `ecc:${hook.id}`
+              : `ecc:${matcher}:${hook.command.slice(0, 40)}`
           bridged.push({
-            phase: deepicodePhase,
+            id: hookId,
+            phase: deepreefPhase,
             toolMatcher: matcher,
             command: hook.command,
             timeout: hook.timeout ?? 30,

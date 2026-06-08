@@ -1,4 +1,4 @@
-import { Box, Text } from '@deepicode/ink';
+import { Box, Text } from '@deepreef/ink';
 
 interface StatusBarProps {
   model: string;

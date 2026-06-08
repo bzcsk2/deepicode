@@ -1,4 +1,4 @@
-# deepicode
+# deepreef
 
 <p align="center">
   <strong>中文</strong> |
@@ -17,7 +17,7 @@
 
 **花别人的钱不心疼，花自己的钱每一分都要算。**
 
-deepicode 不是又一个套壳 LLM 聊天工具。它是一个**把 DeepSeek API 经济学玩到极致的终端编程 Agent**。我们围绕 DeepSeek 的 prefix-cache 定价模型重新设计了整个上下文引擎——cache hit 时每百万 token 只要 1 块钱，cache miss 时要 4 块。这个 4 倍的差价，就是 deepicode 存在的意义。
+deepreef 不是又一个套壳 LLM 聊天工具。它是一个**把 DeepSeek API 经济学玩到极致的终端编程 Agent**。我们围绕 DeepSeek 的 prefix-cache 定价模型重新设计了整个上下文引擎——cache hit 时每百万 token 只要 1 块钱，cache miss 时要 4 块。这个 4 倍的差价，就是 deepreef 存在的意义。
 
 ---
 
@@ -25,7 +25,7 @@ deepicode 不是又一个套壳 LLM 聊天工具。它是一个**把 DeepSeek AP
 
 用普通 Agent 写一天代码，轻松烧掉几块钱甚至几十块。不是因为你用了多少 token——而是因为你**为同一段系统提示词反复付了 cache miss 的钱**。
 
-deepicode 的做法：
+deepreef 的做法：
 
 ```
 每次 API 调用：
@@ -37,16 +37,16 @@ deepicode 的做法：
   └─────────────────────────────┘
 
 普通 Agent：改一个工具定义 → 整个前缀变了 → 全额按 miss 计费
-deepicode：SHA-256 指纹检测 → 只有真正变了的部分才触发 miss
+deepreef：SHA-256 指纹检测 → 只有真正变了的部分才触发 miss
 ```
 
-这不是省 10%、20% 的小优化。一个 50 轮的长会话，deepicode 能比普通 Agent **少花 60-80% 的 API 费用**。
+这不是省 10%、20% 的小优化。一个 50 轮的长会话，deepreef 能比普通 Agent **少花 60-80% 的 API 费用**。
 
 ---
 
 ## 不只是省——还能提前告诉你花多少
 
-每次输入提交后，deepicode 会分析任务复杂度，预估本轮消耗：
+每次输入提交后，deepreef 会分析任务复杂度，预估本轮消耗：
 
 ```text
 ╭─ 成本预估 ─────────────────────────────╮
@@ -84,7 +84,7 @@ deepicode：SHA-256 指纹检测 → 只有真正变了的部分才触发 miss
 
 ### Skills（技能系统）
 
-Skills 是可复用的领域知识包。每个 Skill 是一个独立的指令文件，Agent 按需加载——遇到数据库优化任务自动加载 `postgres-patterns`，做前端页面自动加载 `frontend-design`。你不必每次手写长篇 system prompt，deepicode 帮你记住并适时激活。
+Skills 是可复用的领域知识包。每个 Skill 是一个独立的指令文件，Agent 按需加载——遇到数据库优化任务自动加载 `postgres-patterns`，做前端页面自动加载 `frontend-design`。你不必每次手写长篇 system prompt，deepreef 帮你记住并适时激活。
 
 ```text
 用户: "帮我优化这个 SQL 查询"
@@ -103,7 +103,7 @@ Skills 是可复用的领域知识包。每个 Skill 是一个独立的指令文
 通过 MCP 协议接入外部工具和数据源。Supabase 数据库、Serena 代码分析、Playwright 浏览器自动化——都作为 MCP Server 注册，Agent 自动发现并调用。
 
 ```text
-deepicode                    MCP Servers
+deepreef                    MCP Servers
    │                            │
    ├── mcp:supabase ────────────┤  执行数据库查询
    ├── mcp:serena ──────────────┤  代码符号分析
@@ -130,7 +130,7 @@ deepicode                    MCP Servers
   整合结果 → 一份完整的审计报告 + 测试代码
 ```
 
-> **当前状态**：Skills、MCP 动态工具发现与调用、隔离子 Agent 已接入。内置静态 Agent Tool 共 34 个；LSP 需要在 `.deepicode/lsp.json` 配置 language server，浏览器交互需要安装 Playwright。
+> **当前状态**：Skills、MCP 动态工具发现与调用、隔离子 Agent 已接入。内置静态 Agent Tool 共 34 个；LSP 需要在 `.deepreef/lsp.json` 配置 language server，浏览器交互需要安装 Playwright。
 
 LSP 最小配置示例：
 
@@ -177,7 +177,7 @@ CLI (readline)           TUI (Ink/React)          IDE Plugin
 
 ### 三段式上下文
 
-这是 deepicode 的省钱核心。DeepSeek 的 prefix-cache 按**请求消息的字节前缀**匹配：前缀相同时 token 按 cache hit 计费（便宜），前缀变化时按 cache miss 计费（贵）。
+这是 deepreef 的省钱核心。DeepSeek 的 prefix-cache 按**请求消息的字节前缀**匹配：前缀相同时 token 按 cache hit 计费（便宜），前缀变化时按 cache miss 计费（贵）。
 
 ```
 发给 API 的 messages 数组：
@@ -266,7 +266,7 @@ read_file("a.ts")  →  recordRead(mtime=10:30:01, size=4096)
 
 ### Session 持久化
 
-每轮对话完整写入 `.deepicode/sessions/<id>.jsonl`，异步批量写不阻塞主循环。
+每轮对话完整写入 `.deepreef/sessions/<id>.jsonl`，异步批量写不阻塞主循环。
 
 ```jsonl
 {"ts":1717000000,"type":"event","payload":{"role":"reasoning_delta","content":"..."}}
@@ -281,8 +281,8 @@ read_file("a.ts")  →  recordRead(mtime=10:30:01, size=4096)
 
 ```bash
 # 前置：Bun >= 1.3
-git clone https://github.com/bzcsk2/deepicode.git
-cd deepicode
+git clone https://github.com/bzcsk2/deepreef.git
+cd deepreef
 bun install
 
 # 配置 API Key（二选一）
@@ -324,7 +324,7 @@ bun run dev --help
 ## 项目结构
 
 ```text
-deepicode/packages/
+deepreef/packages/
 ├── core/     # 核层：推理引擎
 │   ├── engine.ts              # 主循环 (AsyncGenerator)
 │   ├── client.ts              # DeepSeek SSE 客户端
@@ -357,11 +357,11 @@ deepicode/packages/
 
 ## 插件系统
 
-deepicode 支持通过插件扩展功能。
+deepreef 支持通过插件扩展功能。
 
 ### 配置
 
-在项目根目录创建 `.deepicode/plugins.json`：
+在项目根目录创建 `.deepreef/plugins.json`：
 
 ```json
 [
@@ -402,7 +402,7 @@ export default {
 插件工具可以使用 Zod 4 schema 声明参数类型和验证规则：
 
 ```typescript
-import { definePluginTool } from "@deepicode/plugin"
+import { definePluginTool } from "@deepreef/plugin"
 import { z } from "zod"
 
 export default {
@@ -432,7 +432,7 @@ export default {
 
 ## 斜杠命令
 
-deepicode 支持以下斜杠命令：
+deepreef 支持以下斜杠命令：
 
 | 命令 | 说明 |
 |------|------|
@@ -473,8 +473,8 @@ bun run typecheck  # TypeScript 编译检查
 
 | 文档 | 说明 |
 |------|------|
-| [设计文档](./Deepicode项目设计文档.md) | 五层架构、三段式上下文、策略系统 |
-| [实施计划](./Deepicode实施计划.md) | 分 Phase 实施步骤与验收标准 |
+| [设计文档](./Deepreef项目设计文档.md) | 五层架构、三段式上下文、策略系统 |
+| [实施计划](./Deepreef实施计划.md) | 分 Phase 实施步骤与验收标准 |
 | [TODO](./TODO.md) | 当前任务与优先级 |
 | [DONE](./DONE.md) | 已完成记录与已知限制 |
 | [FindBug](./FindBug.md) | Agent 系统 Bug 模式与审查指南 |
@@ -490,7 +490,7 @@ Issue 和 PR 都欢迎。Fork → Feature Branch → Commit → PR。
 
 ## 免费 Provider
 
-deepicode 支持以下免费 provider（无需 API Key）：
+deepreef 支持以下免费 provider（无需 API Key）：
 
 | Provider | 说明 | 限速 |
 |---|---|---|

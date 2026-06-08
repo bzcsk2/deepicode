@@ -51,7 +51,7 @@ export class McpHost {
 
   async loadConfig(configPath?: string): Promise<McpLoadSummary> {
     const paths = configPath ? [configPath] : [
-      resolve(process.cwd(), ".deepicode/mcp.json"),
+      resolve(process.cwd(), ".deepreef/mcp.json"),
     ]
 
     let config: McpConfig = {}
@@ -143,7 +143,7 @@ export class McpHost {
     const auth = await readAuthStore()
     const failed: McpLoadSummary["failed"] = []
     await Promise.all(sources.map(({ name, command, args, env }) =>
-      this.connect(name, { command, args, env: { ...env, ...(auth[name]?.apiKey ? { MCP_API_KEY: auth[name].apiKey, DEEPICODE_MCP_API_KEY: auth[name].apiKey } : {}) } }).catch((error) => {
+      this.connect(name, { command, args, env: { ...env, ...(auth[name]?.apiKey ? { MCP_API_KEY: auth[name].apiKey, DEEPREEF_MCP_API_KEY: auth[name].apiKey } : {}) } }).catch((error) => {
         failed.push({ name, error: error instanceof Error ? error.message : String(error) })
       })
     ))
@@ -178,7 +178,7 @@ export class McpHost {
 
 async function readAuthStore(): Promise<Record<string, { apiKey: string }>> {
   try {
-    const raw = await readFile(resolve(process.cwd(), ".deepicode/mcp-auth.json"), "utf8")
+    const raw = await readFile(resolve(process.cwd(), ".deepreef/mcp-auth.json"), "utf8")
     const parsed = JSON.parse(raw)
     const result = await McpAuthStoreSchema["~standard"].validate(parsed)
     if ("value" in result) {
@@ -196,7 +196,7 @@ function withCredential(config: McpServerConfig, apiKey?: string): McpServerConf
     ...config,
     env: {
       MCP_API_KEY: apiKey,
-      DEEPICODE_MCP_API_KEY: apiKey,
+      DEEPREEF_MCP_API_KEY: apiKey,
       ...config.env,
     },
   }

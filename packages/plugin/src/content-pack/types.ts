@@ -1,6 +1,6 @@
 export type PluginKind = "runtime" | "content-pack"
 
-export type ManifestSourceKind = "deepicode" | "codex" | "claude" | "ecc"
+export type ManifestSourceKind = "deepreef" | "codex" | "claude" | "ecc"
 
 export interface ContentPackManifest {
   id: string
@@ -22,36 +22,43 @@ export interface ContentPackManifest {
   metadata?: Record<string, unknown>
 }
 
-export interface InstallProfile {
-  id: string
+// Real ECC format: profiles is an object map, not an array
+export interface InstallProfileEntry {
   description?: string
   modules: string[]
 }
 
 export interface InstallProfiles {
-  profiles: InstallProfile[]
+  version?: number
+  profiles: Record<string, InstallProfileEntry>
 }
 
 export interface InstallModule {
   id: string
   description?: string
   dependencies?: string[]
-  paths?: Record<string, string[]>
+  paths?: string[] // Flat array, not Record<string, string[]>. kind field classifies paths.
   targets?: string[]
-  kind?: string
+  kind?: string // "rules" | "agents" | "skills" | "commands" | "hooks" | "platform" | "orchestration" | "docs" | etc.
+  defaultInstall?: boolean
+  cost?: string
+  stability?: string
 }
 
 export interface InstallModules {
+  version?: number
   modules: InstallModule[]
 }
 
 export interface InstallComponent {
   id: string
+  family?: string
   description?: string
   modules: string[]
 }
 
 export interface InstallComponents {
+  version?: number
   components: InstallComponent[]
 }
 
@@ -87,6 +94,7 @@ export interface ResolvedContentPack {
     hooks: ContentAsset[]
     mcp: ContentAsset[]
   }
+  options: ContentPackPluginOptions
   diagnostics: ContentPackDiagnostic[]
 }
 

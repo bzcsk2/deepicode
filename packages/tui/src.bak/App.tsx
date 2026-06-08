@@ -1,9 +1,9 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Box, Text, AlternateScreen, instances, SHOW_CURSOR, EXIT_ALT_SCREEN, useInput } from '@deepicode/ink';
+import { Box, Text, AlternateScreen, instances, SHOW_CURSOR, EXIT_ALT_SCREEN, useInput } from '@deepreef/ink';
 import { writeSync } from 'node:fs';
-import type { ReasonixEngine } from '@deepicode/core';
-import type { DeepicodeConfig } from '@deepicode/core';
-import { PROVIDERS, AGENTS, saveLastConfig } from '@deepicode/core';
+import type { ReasonixEngine } from '@deepreef/core';
+import type { DeepreefConfig } from '@deepreef/core';
+import { PROVIDERS, AGENTS, saveLastConfig } from '@deepreef/core';
 import { createBridge, type BridgeState } from './bridge.js';
 import { DeepiMessages } from './DeepiMessages.js';
 import { DeepiPromptInput } from './DeepiPromptInput.js';
@@ -100,7 +100,7 @@ export function getProviderLabel(provider: string): string {
 
 interface AppProps {
   engine: ReasonixEngine;
-  config: DeepicodeConfig;
+  config: DeepreefConfig;
 }
 
 export function App({ engine, config }: AppProps) {

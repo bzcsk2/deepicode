@@ -1,6 +1,6 @@
 import { resolve } from "node:path"
 import { spawn } from "node:child_process"
-import type { AgentTool } from "@deepicode/core"
+import type { AgentTool } from "@deepreef/core"
 import { safeStringify } from "./safe-stringify.js"
 
 const MAX_OUTPUT_CHARS = 500_000

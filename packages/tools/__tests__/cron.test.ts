@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from "vitest"
 // for unit testing. This avoids calling spawnSync("crontab") in tests.
 
 function parseJobs(lines: string[]): Array<{ name: string; schedule: string; command: string }> {
-  const JOB_MARKER = "# deepicode-job:"
+  const JOB_MARKER = "# deepreef-job:"
   const jobs: Array<{ name: string; schedule: string; command: string }> = []
   for (let i = 0; i < lines.length; i++) {
     const match = lines[i].match(new RegExp(`^${escapeRegex(JOB_MARKER)}(\\S+)`))
@@ -22,7 +22,7 @@ function parseJobs(lines: string[]): Array<{ name: string; schedule: string; com
 }
 
 function deleteJob(lines: string[], name: string): string[] {
-  const JOB_MARKER = "# deepicode-job:"
+  const JOB_MARKER = "# deepreef-job:"
   const result: string[] = []
   const marker = `${JOB_MARKER}${name}`
   let skipping = false
@@ -45,7 +45,7 @@ function escapeRegex(s: string): string {
 describe("Cron parseJobs", () => {
   it("should parse a simple job", () => {
     const lines = [
-      "# deepicode-job:test-job",
+      "# deepreef-job:test-job",
       "0 * * * * /usr/bin/echo hello",
     ]
     const jobs = parseJobs(lines)
@@ -56,16 +56,16 @@ describe("Cron parseJobs", () => {
   })
 
   it("should skip jobs without schedule line", () => {
-    const lines = ["# deepicode-job:orphan"]
+    const lines = ["# deepreef-job:orphan"]
     const jobs = parseJobs(lines)
     expect(jobs).toHaveLength(0)
   })
 
   it("should parse multiple jobs", () => {
     const lines = [
-      "# deepicode-job:job1",
+      "# deepreef-job:job1",
       "*/5 * * * * /bin/true",
-      "# deepicode-job:job2",
+      "# deepreef-job:job2",
       "0 0 * * * /bin/false",
     ]
     const jobs = parseJobs(lines)
@@ -76,7 +76,7 @@ describe("Cron parseJobs", () => {
 
   it("should handle empty lines between marker and schedule", () => {
     const lines = [
-      "# deepicode-job:j1",
+      "# deepreef-job:j1",
       "",
       "0 * * * * /bin/ls",
     ]
@@ -105,25 +105,25 @@ describe("S7: Cron auto-create", () => {
 describe("Cron deleteJob", () => {
   it("should delete a job and its schedule line", () => {
     const lines = [
-      "# deepicode-job:delete-me",
+      "# deepreef-job:delete-me",
       "0 * * * * /bin/echo",
-      "# deepicode-job:keep-me",
+      "# deepreef-job:keep-me",
       "*/5 * * * * /bin/true",
     ]
     const result = deleteJob(lines, "delete-me")
     expect(result).toHaveLength(2)
-    expect(result[0]).toBe("# deepicode-job:keep-me")
+    expect(result[0]).toBe("# deepreef-job:keep-me")
   })
 
   it("should not modify lines when job not found", () => {
-    const lines = ["# deepicode-job:existing", "0 * * * * /bin/true"]
+    const lines = ["# deepreef-job:existing", "0 * * * * /bin/true"]
     const result = deleteJob(lines, "nonexistent")
     expect(result).toEqual(lines)
   })
 
   it("should delete job but keep unrelated comment lines after", () => {
     const lines = [
-      "# deepicode-job:with-comment",
+      "# deepreef-job:with-comment",
       "0 * * * * /bin/echo",
       "# some unrelated comment",
     ]

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Box, Text, useInput } from '@deepicode/ink';
-import { SessionLoader, type SessionSummary } from '@deepicode/core';
+import { Box, Text, useInput } from '@deepreef/ink';
+import { SessionLoader, type SessionSummary } from '@deepreef/core';
 
 interface SessionPickerProps {
   onSelect: (sessionId: string) => void;

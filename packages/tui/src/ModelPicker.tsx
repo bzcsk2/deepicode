@@ -10,8 +10,8 @@
  * @param onCancel - 用户按 Esc 取消时的回调
  */
 import { useState, useCallback } from 'react';
-import { Box, Text, useInput } from '@deepicode/ink';
-import { PROVIDERS, getApiKeyEnvVar } from '@deepicode/core';
+import { Box, Text, useInput } from '@deepreef/ink';
+import { PROVIDERS, getApiKeyEnvVar } from '@deepreef/core';
 import { execFile } from 'node:child_process';
 import { t } from './i18n/index.js';
 

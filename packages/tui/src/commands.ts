@@ -3,7 +3,7 @@
  * Testable without rendering any Ink components.
  */
 
-import { AGENTS, defaultAgentRegistry } from "@deepicode/core"
+import { AGENTS, defaultAgentRegistry } from "@deepreef/core"
 
 export type SlashCommand =
   | { name: "exit" }

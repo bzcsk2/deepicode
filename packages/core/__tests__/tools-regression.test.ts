@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { createWriteFileTool } from "@deepicode/tools"
-import { createGrepTool } from "@deepicode/tools"
-import { createListDirTool } from "@deepicode/tools"
-import { createTodoWriteTool } from "@deepicode/tools"
+import { createWriteFileTool } from "@deepreef/tools"
+import { createGrepTool } from "@deepreef/tools"
+import { createListDirTool } from "@deepreef/tools"
+import { createTodoWriteTool } from "@deepreef/tools"
 import { mkdir, writeFile, rm } from "node:fs/promises"
 import { resolve } from "node:path"
 import { tmpdir } from "node:os"
@@ -15,7 +15,7 @@ describe("write_file tool (B2: new tool)", () => {
   const ctx = { cwd: process.cwd(), signal: new AbortController().signal } as any
 
   beforeEach(async () => {
-    tmpDir = resolve(tmpdir(), `deepicode-test-wf-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    tmpDir = resolve(tmpdir(), `deepreef-test-wf-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     await mkdir(tmpDir, { recursive: true })
   })
 
@@ -132,7 +132,7 @@ describe("list_dir tool (C1: new tool)", () => {
   const ctx = { cwd: process.cwd(), signal: new AbortController().signal } as any
 
   beforeEach(async () => {
-    tmpDir = resolve(tmpdir(), `deepicode-test-ld-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    tmpDir = resolve(tmpdir(), `deepreef-test-ld-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     await mkdir(tmpDir, { recursive: true })
     await writeFile(resolve(tmpDir, "a.txt"), "aaa", "utf-8")
     await writeFile(resolve(tmpDir, "b.txt"), "bbb", "utf-8")
@@ -222,7 +222,7 @@ describe("bash tool security baseline (D2: deny patterns)", () => {
   const isWin = process.platform === "win32"
 
   it("should deny rm -rf / command", async () => {
-    const { createBashTool } = await import("@deepicode/tools")
+    const { createBashTool } = await import("@deepreef/tools")
     const tool = createBashTool()
     const cmd = isWin ? "rm -Recurse -Force /" : "rm -rf /"
     const result = await tool.execute({ command: cmd }, ctx)
@@ -232,7 +232,7 @@ describe("bash tool security baseline (D2: deny patterns)", () => {
 
   it("should deny sudo commands", async () => {
     if (isWin) return // sudo does not exist on Windows
-    const { createBashTool } = await import("@deepicode/tools")
+    const { createBashTool } = await import("@deepreef/tools")
     const tool = createBashTool()
     const result = await tool.execute({ command: "sudo whoami" }, ctx)
     expect(result.isError).toBe(true)
@@ -241,7 +241,7 @@ describe("bash tool security baseline (D2: deny patterns)", () => {
 
   it("should deny mkfs commands", async () => {
     if (isWin) return // mkfs does not exist on Windows
-    const { createBashTool } = await import("@deepicode/tools")
+    const { createBashTool } = await import("@deepreef/tools")
     const tool = createBashTool()
     const result = await tool.execute({ command: "mkfs.ext4 /dev/sda1" }, ctx)
     expect(result.isError).toBe(true)
@@ -250,7 +250,7 @@ describe("bash tool security baseline (D2: deny patterns)", () => {
 
   it("should deny chmod -R 777 /", async () => {
     if (isWin) return // chmod does not exist on Windows
-    const { createBashTool } = await import("@deepicode/tools")
+    const { createBashTool } = await import("@deepreef/tools")
     const tool = createBashTool()
     const result = await tool.execute({ command: "chmod -R 777 /" }, ctx)
     expect(result.isError).toBe(true)

@@ -1,6 +1,6 @@
-# Deepicode CI 与平台兼容性修复执行指南
+# Deepreef CI 与平台兼容性修复执行指南
 
-本文档用于指导后续 agent 处理 Deepicode 的 GitHub Actions CI、Windows/macOS/Linux 兼容性和测试稳定性问题。执行目标不是“让 CI 临时变绿”，而是把跨平台失败点修成可长期维护的代码或测试。
+本文档用于指导后续 agent 处理 Deepreef 的 GitHub Actions CI、Windows/macOS/Linux 兼容性和测试稳定性问题。执行目标不是“让 CI 临时变绿”，而是把跨平台失败点修成可长期维护的代码或测试。
 
 ## 目标
 
@@ -21,7 +21,7 @@
 最新已通过 GitHub Actions run：
 
 - `26928659701`
-- URL: `https://github.com/bzcsk2/deepicode/actions/runs/26928659701`
+- URL: `https://github.com/bzcsk2/deepreef/actions/runs/26928659701`
 - 结论: `success`
 - 平台:
   - `ubuntu-latest`: success
@@ -58,21 +58,21 @@ bun test
 查看最新 CI：
 
 ```bash
-gh run list --repo bzcsk2/deepicode --branch master --limit 5 \
+gh run list --repo bzcsk2/deepreef --branch master --limit 5 \
   --json databaseId,headSha,status,conclusion,createdAt,displayTitle,url
 ```
 
 查看单个 run：
 
 ```bash
-gh run view <run_id> --repo bzcsk2/deepicode --json status,conclusion,url,jobs
+gh run view <run_id> --repo bzcsk2/deepreef --json status,conclusion,url,jobs
 ```
 
 下载失败 job 日志：
 
 ```bash
-gh api /repos/bzcsk2/deepicode/actions/jobs/<job_id>/logs > /tmp/deepicode-ci-job.log
-rg -n "\(fail\)|tests failed|TypeError|Received:|Expected:|error:|FAIL|timed out|Timeout" /tmp/deepicode-ci-job.log
+gh api /repos/bzcsk2/deepreef/actions/jobs/<job_id>/logs > /tmp/deepreef-ci-job.log
+rg -n "\(fail\)|tests failed|TypeError|Received:|Expected:|error:|FAIL|timed out|Timeout" /tmp/deepreef-ci-job.log
 ```
 
 不要只看 GitHub 页面摘要。必须定位到失败测试、堆栈和平台。
@@ -91,7 +91,7 @@ lockfile had changes, but lockfile is frozen
 根因：
 
 - workspace package 已加入 `package.json`，但 `bun.lock` 未同步。
-- 典型案例：`packages/plugin` 已作为 workspace 存在，但 lockfile 缺少 `@deepicode/plugin`。
+- 典型案例：`packages/plugin` 已作为 workspace 存在，但 lockfile 缺少 `@deepreef/plugin`。
 
 修复：
 
@@ -136,13 +136,13 @@ with:
 - 避免在共享测试文件中 mock 高层模块。
 - 需要 mock 时，确保 mock 的行为保留真实语义，不要过度简化。
 - 用真实 `MockSseServer` 替代全局 client mock。
-- 测试中的临时 `.deepicode` 状态必须用临时 cwd 隔离。
+- 测试中的临时 `.deepreef` 状态必须用临时 cwd 隔离。
 
 建议结构：
 
 ```ts
 const originalCwd = process.cwd()
-const testCwd = mkdtempSync(join(tmpdir(), "deepicode-test-"))
+const testCwd = mkdtempSync(join(tmpdir(), "deepreef-test-"))
 process.chdir(testCwd)
 
 try {
@@ -170,7 +170,7 @@ new ContextPolicyStore("/nonexistent/path/that/does/not/exist")
 
 ```ts
 const fileAsWorkspace = join(tmpDir, "not-a-directory")
-await writeFile(fileAsWorkspace, "blocks nested .deepicode creation")
+await writeFile(fileAsWorkspace, "blocks nested .deepreef creation")
 
 const invalidStore = new ContextPolicyStore(fileAsWorkspace)
 const saved = await invalidStore.save(DEFAULT_CONTEXT_POLICY)
@@ -348,10 +348,10 @@ git push
 8. 监控 CI：
 
 ```bash
-gh run list --repo bzcsk2/deepicode --branch master --limit 3 \
+gh run list --repo bzcsk2/deepreef --branch master --limit 3 \
   --json databaseId,headSha,status,conclusion,displayTitle,url
 
-gh run watch <run_id> --repo bzcsk2/deepicode --exit-status
+gh run watch <run_id> --repo bzcsk2/deepreef --exit-status
 ```
 
 9. 如果 CI 失败，回到第 3 步。不要连续盲改。

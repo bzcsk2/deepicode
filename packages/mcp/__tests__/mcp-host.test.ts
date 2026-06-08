@@ -34,7 +34,7 @@ describe("McpHost", () => {
   })
 
   it("should return load summary when some configured servers fail", { timeout: process.platform === "win32" ? 15000 : 5000 }, async () => {
-    const dir = mkdtempSync(join(tmpdir(), "deepicode-mcp-config-"))
+    const dir = mkdtempSync(join(tmpdir(), "deepreef-mcp-config-"))
     const configPath = join(dir, "mcp.json")
     writeFileSync(configPath, JSON.stringify({
       mcpServers: {

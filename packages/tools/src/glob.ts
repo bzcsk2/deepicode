@@ -1,6 +1,6 @@
 import { isAbsolute, relative, resolve } from "node:path"
 import { realpathSync } from "node:fs"
-import type { AgentTool } from "@deepicode/core"
+import type { AgentTool } from "@deepreef/core"
 import { safeStringify } from "./safe-stringify.js"
 
 const MAX_RESULTS = 100

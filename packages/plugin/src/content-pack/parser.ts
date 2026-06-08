@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, readdirSync, statSync } from "node:fs"
+import { readFileSync, existsSync, statSync } from "node:fs"
 import { resolve } from "node:path"
 import type { ContentPackManifest } from "./types.js"
 
@@ -7,6 +7,12 @@ export interface ParseResult {
   error?: string
 }
 
+/**
+ * Parse a manifest JSON file into a structured ContentPackManifest.
+ * Does NOT auto-discover default directories (skills/, agents/, etc.).
+ * Directory discovery is handled by the resolver based on whether ECC
+ * install manifests exist.
+ */
 export function parseManifest(manifestPath: string, rootDir: string): ParseResult {
   try {
     const raw = readFileSync(manifestPath, "utf8")
@@ -19,52 +25,19 @@ export function parseManifest(manifestPath: string, rootDir: string): ParseResul
     const id = data.id ?? data.name ?? rootDir.split("/").pop() ?? "unknown"
     const name = data.name ?? id
 
+    // Parse manifest-declared assets only (no directory discovery)
     const skillDirs: string[] = []
     const agentFiles: string[] = []
     const ruleFiles: string[] = []
     const commandFiles: string[] = []
 
-    // Discover default directories
-    const defaultSkillsDir = resolve(rootDir, "skills")
-    if (existsSync(defaultSkillsDir)) {
-      skillDirs.push(defaultSkillsDir)
-    }
-    const defaultAgentsDir = resolve(rootDir, "agents")
-    if (existsSync(defaultAgentsDir)) {
-      try {
-        for (const f of readdirSync(defaultAgentsDir)) {
-          if (f.endsWith(".md")) {
-            agentFiles.push(resolve(defaultAgentsDir, f))
-          }
-        }
-      } catch {}
-    }
-    const defaultRulesDir = resolve(rootDir, "rules")
-    if (existsSync(defaultRulesDir)) {
-      try {
-        for (const f of readdirSync(defaultRulesDir)) {
-          ruleFiles.push(resolve(defaultRulesDir, f))
-        }
-      } catch {}
-    }
-    const defaultCommandsDir = resolve(rootDir, "commands")
-    if (existsSync(defaultCommandsDir)) {
-      try {
-        for (const f of readdirSync(defaultCommandsDir)) {
-          if (f.endsWith(".md")) {
-            commandFiles.push(resolve(defaultCommandsDir, f))
-          }
-        }
-      } catch {}
-    }
-
-    // Add manifest-declared assets
     if (Array.isArray(data.skills)) {
       for (const s of data.skills) {
         if (typeof s === "string") {
           const p = resolve(rootDir, s)
-          const dir = existsSync(p) && statSync(p).isDirectory() ? p : dirname(p)
-          if (!skillDirs.includes(dir)) skillDirs.push(dir)
+          if (existsSync(p) && statSync(p).isDirectory()) {
+            skillDirs.push(p)
+          }
         }
       }
     }
@@ -92,10 +65,6 @@ export function parseManifest(manifestPath: string, rootDir: string): ParseResul
 
     // Hook files
     const hookFiles: string[] = []
-    const hooksJsonPath = resolve(rootDir, "hooks", "hooks.json")
-    if (existsSync(hooksJsonPath)) {
-      hookFiles.push(hooksJsonPath)
-    }
     if (Array.isArray(data.hooks)) {
       for (const h of data.hooks) {
         if (typeof h === "string") {
@@ -105,16 +74,29 @@ export function parseManifest(manifestPath: string, rootDir: string): ParseResul
     }
 
     // MCP servers from manifest or .mcp.json
+    // Support three forms: string path, string path array, inline object
     const mcpServers: string[] = []
     if (data.mcpServers) {
-      mcpServers.push(manifestPath)
+      if (typeof data.mcpServers === "string") {
+        mcpServers.push(resolve(rootDir, data.mcpServers))
+      } else if (Array.isArray(data.mcpServers)) {
+        for (const s of data.mcpServers) {
+          if (typeof s === "string") {
+            mcpServers.push(resolve(rootDir, s))
+          }
+        }
+      } else if (typeof data.mcpServers === "object") {
+        // Inline MCP server config — store as manifest reference
+        mcpServers.push("__inline__:" + manifestPath)
+      }
     }
+    // .mcp.json is a standard location
     const mcpJsonPath = resolve(rootDir, ".mcp.json")
     if (existsSync(mcpJsonPath)) {
       mcpServers.push(mcpJsonPath)
     }
 
-    const sourceKind = manifestPath.includes("deepicode") ? "deepicode"
+    const sourceKind = manifestPath.includes("deepreef") ? "deepreef"
       : manifestPath.includes("codex") ? "codex"
       : "claude"
 
@@ -129,8 +111,8 @@ export function parseManifest(manifestPath: string, rootDir: string): ParseResul
         agentFiles,
         ruleFiles,
         commandFiles,
-        hookFiles,
-        mcpServers,
+        hookFiles: hookFiles.length > 0 ? hookFiles : undefined,
+        mcpServers: mcpServers.length > 0 ? mcpServers : undefined,
         profiles: data.profiles ?? data.installProfiles,
         modules: data.modules ?? data.installModules,
         components: data.components ?? data.installComponents,
@@ -140,8 +122,4 @@ export function parseManifest(manifestPath: string, rootDir: string): ParseResul
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) }
   }
-}
-
-function dirname(p: string): string {
-  return p.substring(0, p.lastIndexOf("/")) || "/"
 }

@@ -1,0 +1,22 @@
+{
+  "name": "@deepreef/tui",
+  "version": "0.0.1",
+  "description": "Reserved package for the DeepReef terminal UI.",
+  "type": "module",
+  "main": "./index.js",
+  "exports": "./index.js",
+  "files": [
+    "index.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bzcsk2/DeepReef.git",
+    "directory": "packages/tui"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

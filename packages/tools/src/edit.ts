@@ -1,6 +1,6 @@
 import { readFile, writeFile, stat } from "node:fs/promises"
 import { resolve } from "node:path"
-import type { AgentTool } from "@deepicode/core"
+import type { AgentTool } from "@deepreef/core"
 import { hashAnchoredReplaceOnce } from "./hash-edit.js"
 import { fuzzyReplaceOnce } from "./fuzzy-edit.js"
 import { checkStale } from "./stale-read.js"

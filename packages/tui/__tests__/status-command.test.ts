@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { parseSlashCommand, buildHelpText } from "../src/commands.js"
 import { formatStatus, formatStatusCodex, formatStatusAscii, formatStatusCompact } from "../src/status/format.js"
-import type { EngineStatusSnapshot } from "@deepicode/core"
+import type { EngineStatusSnapshot } from "@deepreef/core"
 
 describe("Slash Command /status", () => {
   it("parseSlashCommand recognizes /status", () => {

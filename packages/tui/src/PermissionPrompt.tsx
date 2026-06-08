@@ -10,7 +10,7 @@
  * @param onSelect - 用户选择后的回调，(allow, alwaysAllow?) => void
  */
 import { useState, useRef, useEffect } from 'react';
-import { Box, Text, useInput } from '@deepicode/ink';
+import { Box, Text, useInput } from '@deepreef/ink';
 import { t } from './i18n/index.js';
 
 interface PermissionPromptProps {

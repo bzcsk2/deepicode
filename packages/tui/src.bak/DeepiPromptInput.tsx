@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { Box, Text, useInput } from '@deepicode/ink';
+import { Box, Text, useInput } from '@deepreef/ink';
 
 interface DeepiPromptInputProps {
   onSubmit: (text: string) => void;

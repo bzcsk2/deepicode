@@ -1,4 +1,4 @@
-import type { ChatMessage, ReasonixEngine } from '@deepicode/core';
+import type { ChatMessage, ReasonixEngine } from '@deepreef/core';
 import { setTUIState } from './App.js';
 import { t } from './i18n/index.js';
 

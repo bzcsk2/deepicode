@@ -1,4 +1,4 @@
-# deepicode
+# deepreef
 
 <p align="center">
   <a href="./README.md">中文</a> |
@@ -17,7 +17,7 @@
 
 **Spending other people's money is easy. Spending your own — every token counts.**
 
-deepicode isn't another LLM wrapper. It's a terminal-native coding agent that **exploits DeepSeek's pricing model to its absolute limit**. We redesigned the entire context engine around one fact: DeepSeek prefix-cache hits cost ¥1/M tokens, misses cost ¥4/M. That 4x gap is why deepicode exists.
+deepreef isn't another LLM wrapper. It's a terminal-native coding agent that **exploits DeepSeek's pricing model to its absolute limit**. We redesigned the entire context engine around one fact: DeepSeek prefix-cache hits cost ¥1/M tokens, misses cost ¥4/M. That 4x gap is why deepreef exists.
 
 ---
 
@@ -25,7 +25,7 @@ deepicode isn't another LLM wrapper. It's a terminal-native coding agent that **
 
 A regular coding agent burns through ¥10-50 a day. Not because you're using too many tokens — but because you're **paying cache-miss prices for the same system prompt, every single call**.
 
-Here's what deepicode does:
+Here's what deepreef does:
 
 ```
 Every API call:
@@ -37,16 +37,16 @@ Every API call:
   └─────────────────────────────┘
 
 Regular agent: change one tool definition → entire prefix shifts → full miss pricing
-deepicode: SHA-256 fingerprint detection → only actually-changed segments trigger a miss
+deepreef: SHA-256 fingerprint detection → only actually-changed segments trigger a miss
 ```
 
-This isn't a 10-20% micro-optimization. Over a 50-turn session, deepicode can **cut API costs by 60-80%** compared to a naive agent.
+This isn't a 10-20% micro-optimization. Over a 50-turn session, deepreef can **cut API costs by 60-80%** compared to a naive agent.
 
 ---
 
 ## Know the Price Before You Pay
 
-Every time you submit input, deepicode analyzes task complexity and estimates the cost:
+Every time you submit input, deepreef analyzes task complexity and estimates the cost:
 
 ```text
 ╭─ Cost Estimate ──────────────────────────╮
@@ -76,7 +76,7 @@ Auto Tier:
   Agentic multi-turn detected      → auto-apply 2-3x chain multiplier
 ```
 
-Set a monthly budget cap — deepicode auto-downgrades to flash when you're approaching the limit. **Let code manage your spend, not your willpower.**
+Set a monthly budget cap — deepreef auto-downgrades to flash when you're approaching the limit. **Let code manage your spend, not your willpower.**
 
 ---
 
@@ -84,7 +84,7 @@ Set a monthly budget cap — deepicode auto-downgrades to flash when you're appr
 
 ### Skills System
 
-Skills are reusable domain knowledge packages. Each Skill is a standalone instruction file loaded on demand — database optimization tasks auto-load `postgres-patterns`, frontend work auto-loads `frontend-design`. No more copy-pasting long system prompts — deepicode remembers and activates the right knowledge at the right time.
+Skills are reusable domain knowledge packages. Each Skill is a standalone instruction file loaded on demand — database optimization tasks auto-load `postgres-patterns`, frontend work auto-loads `frontend-design`. No more copy-pasting long system prompts — deepreef remembers and activates the right knowledge at the right time.
 
 ```text
 User: "Optimize this SQL query for me"
@@ -103,7 +103,7 @@ User: "Design a login page"
 Connect external tools and data sources via MCP. Supabase databases, Serena code analysis, Playwright browser automation — all registered as MCP Servers. The Agent auto-discovers and invokes them.
 
 ```text
-deepicode                    MCP Servers
+deepreef                    MCP Servers
    │                            │
    ├── mcp:supabase ────────────┤  Database queries
    ├── mcp:serena ──────────────┤  Code symbol analysis
@@ -130,7 +130,7 @@ User: "Audit this PR for security and generate tests"
   Combined result → complete audit report + test suite
 ```
 
-> **Current status**: Skills, dynamic MCP tool discovery and invocation, and isolated sub-agents are integrated. There are 34 statically registered Agent Tools. LSP requires a configured language server in `.deepicode/lsp.json`; browser interaction requires Playwright.
+> **Current status**: Skills, dynamic MCP tool discovery and invocation, and isolated sub-agents are integrated. There are 34 statically registered Agent Tools. LSP requires a configured language server in `.deepreef/lsp.json`; browser interaction requires Playwright.
 
 Minimal LSP configuration:
 
@@ -177,7 +177,7 @@ CLI (readline)           TUI (Ink/React)          IDE Plugin
 
 ### Three-Zone Context
 
-This is deepicode's cost-saving core. DeepSeek's prefix-cache matches on **byte prefix of the request messages array**: same prefix → cache hit pricing (cheap); different prefix → cache miss pricing (expensive).
+This is deepreef's cost-saving core. DeepSeek's prefix-cache matches on **byte prefix of the request messages array**: same prefix → cache hit pricing (cheap); different prefix → cache miss pricing (expensive).
 
 ```
 Messages array sent to API:
@@ -268,7 +268,7 @@ read_file("a.ts")  →  recordRead(mtime=10:30:01, size=4096)
 
 ### Session Persistence
 
-Every turn's full conversation is written to `.deepicode/sessions/<id>.jsonl` via async batch writes that never block the main loop.
+Every turn's full conversation is written to `.deepreef/sessions/<id>.jsonl` via async batch writes that never block the main loop.
 
 ```jsonl
 {"ts":1717000000,"type":"event","payload":{"role":"reasoning_delta","content":"..."}}
@@ -283,8 +283,8 @@ Every turn's full conversation is written to `.deepicode/sessions/<id>.jsonl` vi
 
 ```bash
 # Prerequisite: Bun >= 1.3
-git clone https://github.com/bzcsk2/deepicode.git
-cd deepicode
+git clone https://github.com/bzcsk2/deepreef.git
+cd deepreef
 bun install
 
 # Set API Key (choose one)
@@ -326,7 +326,7 @@ Concurrency model: `shared` tools run in parallel; `exclusive` tools run sequent
 ## Project Structure
 
 ```text
-deepicode/packages/
+deepreef/packages/
 ├── core/     # Kernel: reasoning engine
 │   ├── engine.ts              # Main loop (AsyncGenerator)
 │   ├── client.ts              # DeepSeek SSE client
@@ -370,8 +370,8 @@ bun run typecheck  # TypeScript type check
 
 | Doc | Content |
 |-----|---------|
-| [Design](./Deepicode项目设计文档.md) | Architecture, context model, strategy system |
-| [Implementation Plan](./Deepicode实施计划.md) | Phase-by-phase steps & acceptance criteria |
+| [Design](./Deepreef项目设计文档.md) | Architecture, context model, strategy system |
+| [Implementation Plan](./Deepreef实施计划.md) | Phase-by-phase steps & acceptance criteria |
 | [TODO](./TODO.md) | Current tasks & priorities |
 | [DONE](./DONE.md) | Completed work & known limitations |
 | [FindBug](./FindBug.md) | Agent-specific bug patterns & review guide |
@@ -387,7 +387,7 @@ Issues and PRs welcome. Fork → Feature Branch → Commit → PR.
 
 ## Free Providers
 
-deepicode supports these free providers (no API key required):
+deepreef supports these free providers (no API key required):
 
 | Provider | Description | Rate Limit |
 |---|---|---|
@@ -401,7 +401,7 @@ Use `/model` command or select from the terminal. Anonymous free tier prompts/ou
 
 ### Configuration
 
-Create `.deepicode/plugins.json` in your project root:
+Create `.deepreef/plugins.json` in your project root:
 
 ```json
 [
@@ -429,7 +429,7 @@ export default {
 Use `definePluginTool` with Zod 4 schemas for typed, validated tool parameters:
 
 ```typescript
-import { definePluginTool } from "@deepicode/plugin"
+import { definePluginTool } from "@deepreef/plugin"
 import { z } from "zod"
 
 export default {

@@ -1,8 +1,8 @@
-import { loadConfig } from "@deepicode/core"
-import { ReasonixEngine } from "@deepicode/core"
-import { buildSystemPrompt } from "@deepicode/core"
-import { createDefaultTools, clearReadTracker, normalizePlatform, resolveShellBackend } from "@deepicode/tools"
-import { McpHost, setMcpHost } from "@deepicode/mcp"
+import { loadConfig } from "@deepreef/core"
+import { ReasonixEngine } from "@deepreef/core"
+import { buildSystemPrompt } from "@deepreef/core"
+import { createDefaultTools, clearReadTracker, normalizePlatform, resolveShellBackend } from "@deepreef/tools"
+import { McpHost, setMcpHost } from "@deepreef/mcp"
 
 const config = loadConfig()
 const mcpHost = new McpHost()

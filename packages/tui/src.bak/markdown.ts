@@ -1,7 +1,7 @@
 import chalk from 'chalk'
 import { marked, type Token, type Tokens } from 'marked'
 import stripAnsi from 'strip-ansi'
-import { stringWidth } from '@deepicode/ink'
+import { stringWidth } from '@deepreef/ink'
 
 const EOL = '\n'
 

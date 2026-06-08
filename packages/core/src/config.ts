@@ -3,7 +3,7 @@ import { resolve, join } from "node:path"
 import { LastConfigSchema } from "./schemas/config.js"
 import { DEEPSEEK_BASE_URL, DEEPSEEK_MODEL } from "./types.js"
 
-export interface DeepicodeConfig {
+export interface DeepreefConfig {
   apiKey: string
   baseUrl: string
   model: string
@@ -142,11 +142,11 @@ function getModelEnvVar(provider: string): string {
   return envKey(provider, "MODEL")
 }
 
-const LAST_CONFIG_FILE = ".deepicode/last-config.json"
+const LAST_CONFIG_FILE = ".deepreef/last-config.json"
 
 export function saveLastConfig(cfg: { provider: string; model: string; baseUrl: string }): void {
   try {
-    const dir = join(process.cwd(), ".deepicode")
+    const dir = join(process.cwd(), ".deepreef")
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     writeFileSync(join(dir, "last-config.json"), JSON.stringify(cfg, null, 2), "utf8")
   } catch {}
@@ -198,11 +198,11 @@ function loadApiKeyFromProjectFile(provider?: string): string | undefined {
   }
 }
 
-export function loadConfig(): DeepicodeConfig {
+export function loadConfig(): DeepreefConfig {
   // Priority: env vars > persisted last-config > defaults
   const last = loadLastConfig()
 
-  const provider = process.env.DEEPICODE_PROVIDER ?? last?.provider ?? "zen"
+  const provider = process.env.DEEPREEF_PROVIDER ?? last?.provider ?? "zen"
   const providerCfg = PROVIDERS[provider]
   const lastForProvider = last?.provider === provider ? last : null
 

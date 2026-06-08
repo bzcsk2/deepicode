@@ -1,4 +1,4 @@
-import type { AgentTool } from "@deepicode/core"
+import type { AgentTool } from "@deepreef/core"
 import { safeStringify } from "../safe-stringify.js"
 import { loadSkillsDirs, matchSkills } from "../skill-loader.js"
 import type { SkillDef } from "../skill-loader.js"
@@ -9,13 +9,15 @@ export type { SkillDef } from "../skill-loader.js"
 
 export interface SkillToolOptions {
   skillDirs?: string[]
+  preloadedSkills?: SkillDef[]
 }
 
 let cachedSkills: SkillDef[] | null = null
 let cachedExtraDirs: string[] = []
+let cachedPreloaded: SkillDef[] = []
 
-async function getSkills(extraDirs: string[] = []): Promise<SkillDef[]> {
-  if (cachedSkills !== null && arraysEqual(cachedExtraDirs, extraDirs)) return cachedSkills
+async function getSkills(extraDirs: string[] = [], preloadedSkills: SkillDef[] = []): Promise<SkillDef[]> {
+  if (cachedSkills !== null && arraysEqual(cachedExtraDirs, extraDirs) && cachedPreloaded === preloadedSkills) return cachedSkills
 
   const dirname = typeof __dirname !== "undefined" ? __dirname : join(process.cwd(), "packages/tools/src/skills")
   const dirs = [join(dirname), ...extraDirs]
@@ -29,22 +31,55 @@ async function getSkills(extraDirs: string[] = []): Promise<SkillDef[]> {
 
   const allSkills = await loadSkillsDirs(uniqueDirs)
 
-  // Deduplicate by name (built-in skills win)
-  const nameSeen = new Set<string>()
+  // Deduplicate by name: built-in skills (no source) keep their name and win.
+  // External skills with name conflicts get namespace: <pluginId>:<name>.
+  const builtinNames = new Set<string>()
   const result: SkillDef[] = []
+
   for (const skill of allSkills) {
-    if (nameSeen.has(skill.name)) continue
-    nameSeen.add(skill.name)
+    if (!skill.source) {
+      // Built-in skill — always wins
+      builtinNames.add(skill.name)
+      result.push(skill)
+    }
+  }
+
+  for (const skill of allSkills) {
+    if (!skill.source) continue // already added
+
+    if (builtinNames.has(skill.name)) {
+      // External skill name conflicts with built-in — namespace it
+      const pluginId = skill.source.pluginId ?? "external"
+      const namespaced = `${pluginId}:${skill.name}`
+      skill.name = namespaced
+    } else if (result.some((s) => s.name === skill.name)) {
+      // External skill name conflicts with another external skill
+      const pluginId = skill.source.pluginId ?? "external"
+      skill.name = `${pluginId}:${skill.name}`
+    }
+
+    result.push(skill)
+  }
+
+  // Merge preloaded skills (command skills, rule skills, etc.)
+  // Preloaded skills are appended; name conflicts are resolved with namespace.
+  for (const skill of preloadedSkills) {
+    if (result.some((s) => s.name === skill.name)) {
+      const namespaced = `ecc:${skill.name}`
+      skill.name = namespaced
+    }
     result.push(skill)
   }
 
   cachedSkills = result
   cachedExtraDirs = extraDirs
+  cachedPreloaded = preloadedSkills
   return result
 }
 
 export function createSkillTool(options?: SkillToolOptions): AgentTool {
   const extraDirs = options?.skillDirs ?? []
+  const preloaded = options?.preloadedSkills ?? []
 
   return {
     name: "Skill",
@@ -73,7 +108,7 @@ export function createSkillTool(options?: SkillToolOptions): AgentTool {
       }
 
       try {
-        const skills = await getSkills(extraDirs)
+        const skills = await getSkills(extraDirs, preloaded)
 
         switch (cmd) {
           case "list": {

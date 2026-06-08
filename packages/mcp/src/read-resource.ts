@@ -1,5 +1,5 @@
-import type { AgentTool } from "@deepicode/core"
-import { safeStringify } from "@deepicode/tools"
+import type { AgentTool } from "@deepreef/core"
+import { safeStringify } from "@deepreef/tools"
 import { getMcpHost } from "./mcp-host-global.js"
 
 export function createReadMcpResourceTool(): AgentTool {

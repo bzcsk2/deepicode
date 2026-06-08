@@ -10,7 +10,7 @@
  *   - marginTop={1} — 卡片之间保持 1 个单位的上边距
  *   - width="100%" — 宽度撑满父容器
  */
-import { Box } from '@deepicode/ink';
+import { Box } from '@deepreef/ink';
 import React from 'react';
 
 export interface CardProps { tone?: string; children: React.ReactNode; }

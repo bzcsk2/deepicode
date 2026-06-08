@@ -1,5 +1,5 @@
 import type { ReactNode, ReactElement } from 'react';
-import { Box, useTerminalSize } from '@deepicode/ink';
+import { Box, useTerminalSize } from '@deepreef/ink';
 
 /**
  * CenteredStage 组件 - 居中弹窗/模态框容器

@@ -1,0 +1,22 @@
+{
+  "name": "@deepreef/core",
+  "version": "0.0.1",
+  "description": "Reserved package for the DeepReef core engine.",
+  "type": "module",
+  "main": "./index.js",
+  "exports": "./index.js",
+  "files": [
+    "index.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bzcsk2/DeepReef.git",
+    "directory": "packages/core"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

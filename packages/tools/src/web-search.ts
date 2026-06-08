@@ -7,7 +7,7 @@
  * - Environment variables: EXA_API_KEY, PARALLEL_API_KEY
  * - Provider selection: OPENCODE_WEBSEARCH_PROVIDER (exa|parallel)
  */
-import type { AgentTool } from "@deepicode/core"
+import type { AgentTool } from "@deepreef/core"
 import { safeStringify } from "./safe-stringify.js"
 
 const SEARCH_TIMEOUT = 25_000
@@ -210,7 +210,7 @@ async function callParallelMCP(
       arguments: {
         objective: query,
         search_queries: [query],
-        session_id: `deepicode-${Date.now()}`,
+        session_id: `deepreef-${Date.now()}`,
       },
     },
   })
@@ -218,7 +218,7 @@ async function callParallelMCP(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json, text/event-stream",
-    "User-Agent": "Deepicode/1.0",
+    "User-Agent": "Deepreef/1.0",
   }
 
   if (process.env.PARALLEL_API_KEY) {

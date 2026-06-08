@@ -1,17 +1,18 @@
 import { stdin as input, stdout as output, stderr as errorOutput } from "node:process"
 import { readFileSync, writeSync } from "node:fs"
 import { resolve } from "node:path"
-import { loadConfig, ReasonixEngine, SessionLoader, defaultAgentRegistry } from "@deepicode/core"
-import { buildSystemPrompt } from "@deepicode/core"
-import { createDefaultTools, clearReadTracker, normalizePlatform, resolveShellBackend } from "@deepicode/tools"
-import { McpHost, createListMcpResourcesTool, createReadMcpResourceTool, createMcpAuthTool, createListMcpToolsTool, createCallMcpToolTool, setMcpHost } from "@deepicode/mcp"
-import { PluginRuntime, pluginToolsToAgentTools } from "@deepicode/plugin"
+import { loadConfig, ReasonixEngine, SessionLoader, defaultAgentRegistry } from "@deepreef/core"
+import { buildSystemPrompt } from "@deepreef/core"
+import { createDefaultTools, clearReadTracker, normalizePlatform, resolveShellBackend } from "@deepreef/tools"
+import { McpHost, createListMcpResourcesTool, createReadMcpResourceTool, createMcpAuthTool, createListMcpToolsTool, createCallMcpToolTool, setMcpHost } from "@deepreef/mcp"
+import { PluginRuntime, pluginToolsToAgentTools } from "@deepreef/plugin"
+import { MemoryService, DeepreefMemoryBridge, createMemoryRecallTool, createMemorySaveTool, createMemorySmartSearchTool, createMemoryForgetTool, createMemoryTimelineTool, createMemoryStatusTool } from "@deepreef/memory"
 import React from "react"
-import { wrappedRender as render } from "@deepicode/ink"
-import { App } from "@deepicode/tui"
+import { wrappedRender as render } from "@deepreef/ink"
+import { App } from "@deepreef/tui"
 
 function printHelp(): void {
-  output.write(`deepicode
+  output.write(`deepreef
 
 Usage:
   bun run packages/cli/src/index.ts
@@ -38,10 +39,10 @@ async function main(): Promise<void> {
   setMcpHost(mcpHost)
   let mcpLoadPromise = mcpHost.loadConfig().then((summary) => {
     if (summary.failed.length > 0) {
-      errorOutput.write(`[deepicode] MCP loaded with ${summary.failed.length}/${summary.serverCount} server failure(s)\n`)
+      errorOutput.write(`[deepreef] MCP loaded with ${summary.failed.length}/${summary.serverCount} server failure(s)\n`)
     }
   }).catch((error) => {
-    errorOutput.write(`[deepicode] MCP config load failed: ${error instanceof Error ? error.message : String(error)}\n`)
+    errorOutput.write(`[deepreef] MCP config load failed: ${error instanceof Error ? error.message : String(error)}\n`)
   })
 
   const engine = sessionId
@@ -56,7 +57,7 @@ async function main(): Promise<void> {
   })
 
   // Initialize plugin runtime (loads executable plugins and content packs)
-  const pluginRuntime = new PluginRuntime()
+  const pluginRuntime = new PluginRuntime({ hookManager: engine.hookManager })
   await pluginRuntime.init()
   const pluginToolAgentTools = pluginToolsToAgentTools(pluginRuntime.getTools())
   const skillDirs = pluginRuntime.getSkillDirs()
@@ -73,17 +74,96 @@ async function main(): Promise<void> {
   }
   engine.setSystemPrompt(baseSystemPrompt)
 
+  // Phase C: Initialize memory subsystem (non-blocking, best-effort)
+  let memoryService: MemoryService | undefined
+  let memoryBridge: DeepreefMemoryBridge | undefined
+  const enableMemory = process.env.DEEPREEF_MEMORY !== "false"
+  if (enableMemory) {
+    try {
+      memoryService = new MemoryService({ dataDir: undefined, autoObserve: true, injectContext: true })
+      await memoryService.start()
+      memoryBridge = new DeepreefMemoryBridge(memoryService, { autoObserve: true, injectContext: true })
+
+      // Inject initial memory context into system prompt
+      const memContext = await memoryService.trigger("mem::context", { sessionId: engine.getSessionId(), maxChars: 2000 }).catch(() => null)
+      if (memContext && typeof memContext === "object" && "context" in memContext) {
+        const ctx = (memContext as { context: string }).context
+        if (ctx) baseSystemPrompt += `\n\n<deepreef-memory-context>\n${ctx}\n</deepreef-memory-context>`
+      }
+
+      // Wire bridge hooks into engine's HookManager
+      engine.hookManager.addHooks({
+        afterToolCall: async (toolName, result) => {
+          if (result.isError) {
+            await memoryBridge?.onPostToolFailure(engine.getSessionId(), toolName, result.content).catch(() => {})
+          } else {
+            await memoryBridge?.onPostToolUse(engine.getSessionId(), toolName, result).catch(() => {})
+          }
+        },
+        onLoopEvent: async (event) => {
+          const ev = event as { role?: string; content?: string }
+          if (ev.role === "assistant_delta" && ev.content && ev.content.length > 10) {
+            await memoryBridge?.onPromptSubmit(engine.getSessionId(), ev.content).catch(() => {})
+          }
+        },
+      })
+
+      // Register memory tools
+      engine.registerTool(createMemoryRecallTool(memoryService))
+      engine.registerTool(createMemorySaveTool(memoryService))
+      engine.registerTool(createMemorySmartSearchTool(memoryService))
+      engine.registerTool(createMemoryForgetTool(memoryService))
+      engine.registerTool(createMemoryTimelineTool(memoryService))
+      engine.registerTool(createMemoryStatusTool(memoryService))
+
+      process.stderr.write(`[deepreef] Memory initialized\n`)
+    } catch (e) {
+      process.stderr.write(`[deepreef] Memory init skipped: ${e instanceof Error ? e.message : String(e)}\n`)
+      memoryService = undefined
+      memoryBridge = undefined
+    }
+  }
+
+  // Load content pack command skills (when mode=skill)
+  // and rule skills (when rules.mode=skill)
+  const commandSkills = pluginRuntime.loadCommandSkills()
+  const preloadedSkills: import('@deepreef/tools').SkillDef[] = []
+  for (const cs of commandSkills) {
+    preloadedSkills.push({
+      name: cs.name,
+      description: cs.description,
+      content: cs.content,
+    })
+  }
+  // Load ECC skill defs (prevents loadSkillsDirs from bypassing selective install)
+  for (const sd of pluginRuntime.loadSkillDefs()) {
+    preloadedSkills.push({
+      name: sd.name,
+      description: sd.description,
+      content: sd.content,
+      source: sd.source,
+    })
+  }
+  // Add rule skills from compileRules
+  for (const rs of rulesResult.skillRules) {
+    preloadedSkills.push({
+      name: rs.name,
+      description: rs.description,
+      content: rs.content,
+    })
+  }
+
   // Load content pack MCP servers into McpHost
   const mcpConfigs = pluginRuntime.loadMcpConfigs()
   if (mcpConfigs.length > 0) {
     mcpLoadPromise = mcpLoadPromise.then(() => mcpHost.addSources(mcpConfigs)).then((summary) => {
       if (summary.failed.length > 0) {
-        errorOutput.write(`[deepicode] Content pack MCP: ${summary.failed.length}/${summary.serverCount} server failure(s)\n`)
+        errorOutput.write(`[deepreef] Content pack MCP: ${summary.failed.length}/${summary.serverCount} server failure(s)\n`)
       }
     })
   }
 
-  for (const tool of createDefaultTools(skillDirs)) {
+  for (const tool of createDefaultTools(skillDirs, preloadedSkills)) {
     engine.registerTool(tool)
   }
   for (const tool of pluginToolAgentTools) {
@@ -104,6 +184,9 @@ async function main(): Promise<void> {
 
     await runTUIMode(engine, config, pluginRuntime, mcpConfigs.length)
   } finally {
+    // Phase C: Stop memory subsystem before engine (best-effort)
+    await memoryBridge?.onSessionEnd(engine.getSessionId()).catch(() => {})
+    await memoryService?.stop().catch(() => {})
     // LIFE-01: close engine (tokenizer worker, logger, session writer)
     await engine.shutdown()
     pluginRuntime.dispose()
@@ -161,10 +244,16 @@ async function runPipeMode(engine: ReasonixEngine): Promise<void> {
 async function runTUIMode(engine: ReasonixEngine, config: ReturnType<typeof loadConfig>, pluginRuntime: PluginRuntime, mcpConfigCount: number = 0): Promise<void> {
   const status = pluginRuntime.getStatus()
   const pluginCount = status.loadedPlugins.length
-  const mcpCount = readConfiguredMcpCount() + mcpConfigCount
+  const contentPackCount = status.contentPacks.length
+  const assetCounts = status.assets
+  // Count error/warning diagnostics
+  const diagnosticCounts = {
+    errors: status.diagnostics.filter(d => d.startsWith("[error]")).length,
+    warnings: status.diagnostics.filter(d => d.startsWith("[warn]")).length,
+  }
   try {
     const { waitUntilExit } = await render(
-      React.createElement(App, { engine, config, pluginCount, mcpCount }),
+      React.createElement(App, { engine, config, pluginCount, contentPackCount, assetCounts, diagnosticCounts }),
       { exitOnCtrlC: false }
     );
     await waitUntilExit();
@@ -176,7 +265,7 @@ async function runTUIMode(engine: ReasonixEngine, config: ReturnType<typeof load
 
 function readConfiguredMcpCount(): number {
   try {
-    const raw = readFileSync(resolve(process.cwd(), ".deepicode", "mcp.json"), "utf8")
+    const raw = readFileSync(resolve(process.cwd(), ".deepreef", "mcp.json"), "utf8")
     const parsed = JSON.parse(raw) as { mcpServers?: Record<string, unknown> }
     return Object.keys(parsed.mcpServers ?? {}).length
   } catch {

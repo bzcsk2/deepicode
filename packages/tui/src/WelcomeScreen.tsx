@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text } from '@deepicode/ink';
+import { Box, Text } from '@deepreef/ink';
 import { FG, TONE } from './reasonix/tokens.js';
 import figlet from 'figlet';
 
@@ -8,7 +8,7 @@ import figlet from 'figlet';
  *
  * 【组件职责】
  * 在对话开始前显示欢迎信息，包括：
- * - 应用 Logo（DEEPICODE 渐变色字母）
+ * - 应用 Logo（DEEPREEF 渐变色字母）
  * - 标语 "探索未至之境"
  * - 当前模型信息
  * - Agent 设置面板（推理档位、上下文裁剪、子代理）
@@ -33,11 +33,13 @@ interface WelcomeScreenProps {
   contextMode: string;
   skillCount: number;
   pluginCount: number;
-  mcpCount: number;
+  contentPackCount: number;
+  assetCounts: { skills: number; agents: number; rules: number; commands: number; mcp: number; hooks: number };
+  diagnosticCounts: { errors: number; warnings: number };
 }
 
 /**
- * Logo 组件 - Figlet ASCII Art DEEPICODE 文字
+ * Logo 组件 - Figlet ASCII Art DEEPREEF 文字
  *
  * 使用 figlet ANSI Regular 字体渲染（实心方块字符），
  * 每行使用不同的渐变色，从蓝色过渡到紫色。
@@ -119,7 +121,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }): React
  * 欢迎界面主组件
  *
  * 布局结构（从上到下）：
- * 1. Logo 区域（渐变色 DEEPICODE）
+ * 1. Logo 区域（渐变色 DEEPREEF）
  * 2. 标语
  * 3. 模型信息
  * 4. 双列面板（Agent 设置 | 组件状态）
@@ -131,7 +133,7 @@ function contextModeLabel(mode: string): string {
   return mode;
 }
 
-export function WelcomeScreen({ model, provider, agent, thinkingMode, contextMode, skillCount, pluginCount, mcpCount }: WelcomeScreenProps): React.ReactElement {
+export function WelcomeScreen({ model, provider, agent, thinkingMode, contextMode, skillCount, pluginCount, contentPackCount, assetCounts, diagnosticCounts }: WelcomeScreenProps): React.ReactElement {
   // 推理模式与状态栏保持一致，直接显示 auto/off/open/high。
   const thinking = thinkingMode || 'off';
   const context = contextModeLabel(contextMode);
@@ -165,9 +167,15 @@ export function WelcomeScreen({ model, provider, agent, thinkingMode, contextMod
           </Panel>
           {/* 组件状态面板 */}
           <Panel title="组件状态">
-            <Row label="插件:" value={String(pluginCount)} />
+            <Row label="执行插件:" value={String(pluginCount)} />
+            <Row label="内容包:" value={String(contentPackCount)} />
             <Row label="技能:" value={String(skillCount)} />
-            <Row label="MCPs:" value={String(mcpCount)} />
+            <Row label="代理:" value={String(assetCounts.agents)} />
+            <Row label="规则:" value={String(assetCounts.rules)} />
+            <Row label="MCP:" value={String(assetCounts.mcp)} />
+            {diagnosticCounts.warnings > 0 || diagnosticCounts.errors > 0 ? (
+              <Row label="诊断:" value={`${diagnosticCounts.errors}错 ${diagnosticCounts.warnings}警`} />
+            ) : null}
           </Panel>
         </Box>
       </Box>

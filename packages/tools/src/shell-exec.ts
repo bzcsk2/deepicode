@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process"
 import { resolve } from "node:path"
-import type { AgentTool, ToolProgressUpdate } from "@deepicode/core"
+import type { AgentTool, ToolProgressUpdate } from "@deepreef/core"
 import { safeStringify, hasBinaryEncoding } from "./safe-stringify.js"
 import { isSensitive } from "./sensitive.js"
 import { normalizePlatform } from "./platform/capabilities.js"

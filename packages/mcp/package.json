@@ -1,5 +1,5 @@
 {
-  "name": "@deepicode/mcp",
+  "name": "@deepreef/mcp",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,8 +16,8 @@
     }
   },
   "dependencies": {
-    "@deepicode/core": "workspace:*",
-    "@deepicode/tools": "workspace:*",
+    "@deepreef/core": "workspace:*",
+    "@deepreef/tools": "workspace:*",
     "zod": "4.4.3"
   }
 }

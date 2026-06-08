@@ -1,9 +1,9 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Box, Text, AlternateScreen, instances, SHOW_CURSOR, EXIT_ALT_SCREEN, useInput } from '@deepicode/ink';
+import { Box, Text, AlternateScreen, instances, SHOW_CURSOR, EXIT_ALT_SCREEN, useInput } from '@deepreef/ink';
 import { writeSync } from 'node:fs';
-import type { ReasonixEngine } from '@deepicode/core';
-import type { ChatMessage, DeepicodeConfig } from '@deepicode/core';
-import { PROVIDERS, AGENTS, defaultAgentRegistry, getModelContextWindow, saveLastConfig } from '@deepicode/core';
+import type { ReasonixEngine } from '@deepreef/core';
+import type { ChatMessage, DeepreefConfig } from '@deepreef/core';
+import { PROVIDERS, AGENTS, defaultAgentRegistry, getModelContextWindow, saveLastConfig } from '@deepreef/core';
 import { createBridge, timelineFromMessages, type BridgeState } from './bridge.js';
 import { DeepiMessages } from './DeepiMessages.js';
 import { DeepiPromptInput, type DeepiPromptInputHandle } from './DeepiPromptInput.js';
@@ -161,7 +161,7 @@ function parseSkillDetail(content: string): SkillRecord {
  */
 async function loadTaggedSkills(names: string[]): Promise<SkillRecord[]> {
   if (names.length === 0) return [];
-  const { createSkillTool } = await import('@deepicode/tools');
+  const { createSkillTool } = await import('@deepreef/tools');
   const tool = createSkillTool();
   const loaded: SkillRecord[] = [];
   for (const name of names) {
@@ -180,9 +180,11 @@ export function getProviderLabel(provider: string): string {
 
 interface AppProps {
   engine: ReasonixEngine;
-  config: DeepicodeConfig;
+  config: DeepreefConfig;
   pluginCount?: number;
-  mcpCount?: number;
+  contentPackCount?: number;
+  assetCounts?: { skills: number; agents: number; rules: number; commands: number; mcp: number; hooks: number };
+  diagnosticCounts?: { errors: number; warnings: number };
 }
 
 /**
@@ -196,9 +198,9 @@ interface AppProps {
  * - 组合主内容区 (scrollableContent) 与底部输入区 (bottomContent)
  *
  * @param engine - ReasonixEngine 实例，驱动 LLM 通信
- * @param config - DeepicodeConfig 配置对象（provider / model / contextWindow 等）
+ * @param config - DeepreefConfig 配置对象（provider / model / contextWindow 等）
  */
-export function App({ engine, config, pluginCount = 0, mcpCount = 0 }: AppProps) {
+export function App({ engine, config, pluginCount = 0, contentPackCount = 0, assetCounts, diagnosticCounts }: AppProps) {
   const persistedSettings = useMemo(() => loadTuiSettings(), []);
   const persistedThinkingMode = persistedSettings.thinkingMode && !validateThinkingMode(persistedSettings.thinkingMode)
     ? persistedSettings.thinkingMode
@@ -623,7 +625,9 @@ export function App({ engine, config, pluginCount = 0, mcpCount = 0 }: AppProps)
           contextMode={contextPolicy.mode}
           skillCount={activeSkills.length}
           pluginCount={pluginCount}
-          mcpCount={mcpCount}
+          contentPackCount={contentPackCount}
+          assetCounts={assetCounts ?? { skills: 0, agents: 0, rules: 0, commands: 0, mcp: 0, hooks: 0 }}
+          diagnosticCounts={diagnosticCounts ?? { errors: 0, warnings: 0 }}
         />
       ) : null}
       {bridgeState.warnings.map((w, i) => (

@@ -36,7 +36,7 @@ export interface SessionWriterStatus {
 }
 
 export class SessionLoader {
-  static sessionDir = resolve(process.cwd(), ".deepicode", "sessions")
+  static sessionDir = resolve(process.cwd(), ".deepreef", "sessions")
 
   static validateSessionId(id: string): boolean {
     if (!id || typeof id !== "string") return false

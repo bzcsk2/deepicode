@@ -12,7 +12,7 @@
  *   - 完成回复和未完成的流式输出使用不同的视觉模板
  */
 
-import { Box, Text, useInterval } from '@deepicode/ink';
+import { Box, Text, useInterval } from '@deepreef/ink';
 import React, { useState, useRef, useMemo } from 'react';
 import { Card } from './Card.js';
 import { CardHeader } from './CardHeader.js';

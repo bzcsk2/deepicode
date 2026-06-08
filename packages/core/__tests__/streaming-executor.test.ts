@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest"
 import type { AgentTool, ToolResult, LoopEvent } from "../src/interface.js"
-import type { PermissionEngine, HookManager } from "@deepicode/security"
+import type { PermissionEngine, HookManager } from "@deepreef/security"
 
 describe("StreamingToolExecutor", () => {
   function makeHandler(name: string, opts?: { concurrency?: string; result?: string; delay?: number; approval?: string; throwOn?: string }): AgentTool {
@@ -314,7 +314,7 @@ describe("StreamingToolExecutor", () => {
     }
     // HookManager accepts multiple hooks via addHooks, not multiple HookManager instances
     // So we need to use real HookManager with multiple hooks
-    const { HookManager } = await import("@deepicode/security")
+    const { HookManager } = await import("@deepreef/security")
     const realHook = new HookManager()
     realHook.addHooks({ beforeToolCall: async () => "deny" })
     realHook.addHooks({ beforeToolCall: async () => { secondCalled = true; return "allow" } })
@@ -408,7 +408,7 @@ describe("StreamingToolExecutor", () => {
   })
 
   // ─── P0 Contract Tests ────────────────────────────────────────────
-  // These tests lock down the contracts from Deepicode-Full-Implementation-Plan.md §4.3.
+  // These tests lock down the contracts from Deepreef-Full-Implementation-Plan.md §4.3.
   // P0-3 is EXPECTED TO FAIL — it exposes a defect that P1 will not fix (permission deny path writes no result).
   // P0-4 now PASSES after P1: settled tracking prevents duplicate results from abort handling.
 

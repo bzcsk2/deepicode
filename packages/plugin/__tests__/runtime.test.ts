@@ -20,12 +20,12 @@ describe("Plugin Runtime", () => {
   })
 
   it("initializes with empty config", async () => {
-    mkdirSync(join(pluginDir, ".deepicode"), { recursive: true })
-    writeFileSync(join(pluginDir, ".deepicode", "plugins.json"), "[]")
+    mkdirSync(join(pluginDir, ".deepreef"), { recursive: true })
+    writeFileSync(join(pluginDir, ".deepreef", "plugins.json"), "[]")
 
     const runtime = new PluginRuntime({
       workspaceRoot: pluginDir,
-      configPath: join(pluginDir, ".deepicode", "plugins.json"),
+      configPath: join(pluginDir, ".deepreef", "plugins.json"),
     })
     await runtime.init()
 
@@ -49,12 +49,12 @@ describe("Plugin Runtime", () => {
       }`,
     )
 
-    mkdirSync(join(pluginDir, ".deepicode"), { recursive: true })
-    writeFileSync(join(pluginDir, ".deepicode", "plugins.json"), JSON.stringify([pluginPath]))
+    mkdirSync(join(pluginDir, ".deepreef"), { recursive: true })
+    writeFileSync(join(pluginDir, ".deepreef", "plugins.json"), JSON.stringify([pluginPath]))
 
     const runtime = new PluginRuntime({
       workspaceRoot: pluginDir,
-      configPath: join(pluginDir, ".deepicode", "plugins.json"),
+      configPath: join(pluginDir, ".deepreef", "plugins.json"),
     })
     await runtime.init()
 
@@ -77,12 +77,12 @@ describe("Plugin Runtime", () => {
       }`,
     )
 
-    mkdirSync(join(pluginDir, ".deepicode"), { recursive: true })
-    writeFileSync(join(pluginDir, ".deepicode", "plugins.json"), JSON.stringify([pluginPath]))
+    mkdirSync(join(pluginDir, ".deepreef"), { recursive: true })
+    writeFileSync(join(pluginDir, ".deepreef", "plugins.json"), JSON.stringify([pluginPath]))
 
     const runtime = new PluginRuntime({
       workspaceRoot: pluginDir,
-      configPath: join(pluginDir, ".deepicode", "plugins.json"),
+      configPath: join(pluginDir, ".deepreef", "plugins.json"),
     })
     await runtime.init()
 
@@ -105,12 +105,12 @@ describe("Plugin Runtime", () => {
       }`,
     )
 
-    mkdirSync(join(pluginDir, ".deepicode"), { recursive: true })
-    writeFileSync(join(pluginDir, ".deepicode", "plugins.json"), JSON.stringify([pluginPath]))
+    mkdirSync(join(pluginDir, ".deepreef"), { recursive: true })
+    writeFileSync(join(pluginDir, ".deepreef", "plugins.json"), JSON.stringify([pluginPath]))
 
     const runtime = new PluginRuntime({
       workspaceRoot: pluginDir,
-      configPath: join(pluginDir, ".deepicode", "plugins.json"),
+      configPath: join(pluginDir, ".deepreef", "plugins.json"),
     })
     await runtime.init()
 
@@ -138,12 +138,12 @@ describe("Plugin Runtime", () => {
       }`,
     )
 
-    mkdirSync(join(pluginDir, ".deepicode"), { recursive: true })
-    writeFileSync(join(pluginDir, ".deepicode", "plugins.json"), JSON.stringify([pluginPath]))
+    mkdirSync(join(pluginDir, ".deepreef"), { recursive: true })
+    writeFileSync(join(pluginDir, ".deepreef", "plugins.json"), JSON.stringify([pluginPath]))
 
     const runtime = new PluginRuntime({
       workspaceRoot: pluginDir,
-      configPath: join(pluginDir, ".deepicode", "plugins.json"),
+      configPath: join(pluginDir, ".deepreef", "plugins.json"),
     })
     await runtime.init()
 
@@ -161,7 +161,7 @@ describe("Plugin Runtime", () => {
   it("handles missing config gracefully", async () => {
     const runtime = new PluginRuntime({
       workspaceRoot: pluginDir,
-      configPath: join(pluginDir, ".deepicode", "nonexistent.json"),
+      configPath: join(pluginDir, ".deepreef", "nonexistent.json"),
     })
     await runtime.init()
 
@@ -174,7 +174,7 @@ describe("Plugin Runtime", () => {
   it("can be initialized only once", async () => {
     const runtime = new PluginRuntime({
       workspaceRoot: pluginDir,
-      configPath: join(pluginDir, ".deepicode", "plugins.json"),
+      configPath: join(pluginDir, ".deepreef", "plugins.json"),
     })
 
     await runtime.init()

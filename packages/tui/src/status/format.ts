@@ -1,4 +1,4 @@
-import type { EngineStatusSnapshot } from "@deepicode/core"
+import type { EngineStatusSnapshot } from "@deepreef/core"
 
 export interface FormatOptions {
   width?: number

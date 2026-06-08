@@ -14,7 +14,7 @@ export interface TuiSettings {
   activeSkills?: PersistedSkill[];
 }
 
-const SETTINGS_DIR = '.deepicode';
+const SETTINGS_DIR = '.deepreef';
 const SETTINGS_FILE = 'ui-settings.json';
 
 function settingsPath(): string {

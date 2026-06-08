@@ -1,10 +1,10 @@
 /**
- * Simplified Perfetto Tracing for Deepicode
+ * Simplified Perfetto Tracing for Deepreef
  *
  * Outputs Chrome Trace Event JSON format viewable in ui.perfetto.dev
  *
- * Enable via DEEPICODE_TRACE=1 or --trace CLI flag
- * Output: .deepicode/traces/trace-<session-id>.json
+ * Enable via DEEPREEF_TRACE=1 or --trace CLI flag
+ * Output: .deepreef/traces/trace-<session-id>.json
  */
 
 import { mkdir, writeFile } from "node:fs/promises"
@@ -73,7 +73,7 @@ function buildTraceDocument(): string {
 }
 
 export function initializePerfettoTracing(sid: string): void {
-  const envValue = process.env.DEEPICODE_TRACE
+  const envValue = process.env.DEEPREEF_TRACE
 
   if (!envValue || envValue === "0" || envValue === "false") {
     return
@@ -82,7 +82,7 @@ export function initializePerfettoTracing(sid: string): void {
   isEnabled = true
   sessionId = sid
   startTimeMs = Date.now()
-  tracePath = join(process.cwd(), ".deepicode", "traces", `trace-${sid}.json`)
+  tracePath = join(process.cwd(), ".deepreef", "traces", `trace-${sid}.json`)
 
   process.on("beforeExit", () => {
     void writePerfettoTrace()

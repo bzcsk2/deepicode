@@ -1,5 +1,5 @@
 {
-  "name": "@deepicode/cli",
+  "name": "@deepreef/cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,17 +12,18 @@
     }
   },
   "bin": {
-    "deepicode": "src/index.ts"
+    "deepreef": "src/index.ts"
   },
   "scripts": {
     "dev": "bun run src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@deepicode/core": "workspace:*",
-    "@deepicode/tools": "workspace:*",
-    "@deepicode/mcp": "workspace:*",
-    "@deepicode/tui": "workspace:*",
-    "@deepicode/plugin": "workspace:*"
+    "@deepreef/core": "workspace:*",
+    "@deepreef/tools": "workspace:*",
+    "@deepreef/mcp": "workspace:*",
+    "@deepreef/tui": "workspace:*",
+    "@deepreef/plugin": "workspace:*",
+    "@deepreef/memory": "workspace:*"
   }
 }

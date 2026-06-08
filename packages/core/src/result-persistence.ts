@@ -30,7 +30,7 @@ const sessionInitialized = new Set<string>()
 async function initSessionUsage(sessionId: string, logger: RuntimeLogger): Promise<void> {
   if (sessionInitialized.has(sessionId)) return
   sessionInitialized.add(sessionId)
-  const dir = join(process.cwd(), ".deepicode", "results", sanitizeId(sessionId))
+  const dir = join(process.cwd(), ".deepreef", "results", sanitizeId(sessionId))
   try {
     const files = await readdir(dir)
     let totalBytes = 0
@@ -104,7 +104,7 @@ export async function maybePersistResult(
   }
 
   try {
-    const dir = join(process.cwd(), ".deepicode", "results", sanitizeId(sessionId))
+    const dir = join(process.cwd(), ".deepreef", "results", sanitizeId(sessionId))
     await mkdir(dir, { recursive: true, mode: 0o700 })
 
     const filename = `${sanitizeId(toolName)}-${randomUUID()}.txt`

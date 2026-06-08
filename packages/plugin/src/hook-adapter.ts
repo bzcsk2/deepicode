@@ -1,5 +1,5 @@
-import type { HookManager, ToolCallHooks, BeforeToolCallContext, ToolCallResult } from "@deepicode/security"
-import type { PermissionDecision } from "@deepicode/security"
+import type { HookManager, ToolCallHooks, BeforeToolCallContext, ToolCallResult } from "@deepreef/security"
+import type { PermissionDecision } from "@deepreef/security"
 import type { PluginLoaded } from "./loader.js"
 
 export interface PluginHookAdapter {

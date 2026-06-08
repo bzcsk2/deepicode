@@ -11,7 +11,7 @@ const ctx = (cwd: string) => ({ cwd, signal: new AbortController().signal }) as 
 describe("read_file", () => {
   let tmpDir: string
   beforeEach(() => {
-    tmpDir = join(tmpdir(), `deepicode-read-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    tmpDir = join(tmpdir(), `deepreef-read-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     mkdirSync(tmpDir, { recursive: true })
   })
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }) } catch {} })
@@ -129,7 +129,7 @@ describe("read_file", () => {
 describe("write_file", () => {
   let tmpDir: string
   beforeEach(() => {
-    tmpDir = join(tmpdir(), `deepicode-write-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    tmpDir = join(tmpdir(), `deepreef-write-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     mkdirSync(tmpDir, { recursive: true })
   })
   afterEach(() => { try { rmSync(tmpDir, { recursive: true, force: true }) } catch {} })
@@ -186,7 +186,7 @@ describe("glob - Bun.Glob fallback", () => {
 describe("glob", () => {
   let tmpDir: string
   beforeEach(() => {
-    tmpDir = join(tmpdir(), `deepicode-glob-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    tmpDir = join(tmpdir(), `deepreef-glob-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     mkdirSync(tmpDir, { recursive: true })
     writeFileSync(join(tmpDir, "a.ts"), "a", "utf-8")
     writeFileSync(join(tmpDir, "b.ts"), "b", "utf-8")

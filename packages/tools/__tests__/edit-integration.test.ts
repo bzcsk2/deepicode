@@ -10,7 +10,7 @@ describe("edit tool integration", () => {
   let filePath: string
 
   beforeEach(() => {
-    tmpDir = join(tmpdir(), `deepicode-edit-int-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    tmpDir = join(tmpdir(), `deepreef-edit-int-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     mkdirSync(tmpDir, { recursive: true })
     filePath = join(tmpDir, "test.txt")
     writeFileSync(filePath, "original content\nsecond line\nthird line", "utf-8")

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { resolve } from "node:path"
-import type { DeepicodeConfig } from "./config.js"
+import type { DeepreefConfig } from "./config.js"
 import { ContextManager } from "./context/manager.js"
 import type { ToolCall, ToolSpec, ChatMessage } from "./types.js"
 import type { CoreEngine, AgentConfig, AgentTool, LoopEvent, AgentState, SessionStats, ToolResult, EnqueueInstructionResult, ChatClient } from "./interface.js"
@@ -10,7 +10,7 @@ import { StreamingToolExecutor } from "./streaming-executor.js"
 import { AsyncSessionWriter, SessionLoader } from "./session.js"
 import { runLoop } from "./loop.js"
 import type { LoopOptions } from "./loop.js"
-import { PermissionEngine, HookManager } from "@deepicode/security"
+import { PermissionEngine, HookManager } from "@deepreef/security"
 import { getAgent, agentConfigFor, getMainMode } from "./agent.js"
 import { SubagentRegistry, checkSubagentPermission } from "./subagent/index.js"
 import type { SubagentRunOptions, SubagentRunResult, SubagentDefinition } from "./subagent/index.js"
@@ -40,7 +40,7 @@ export interface ContextPolicyStatus {
 }
 
 /**
- * ReasonixEngine 是 Deepicode 的核心引擎，负责：
+ * ReasonixEngine 是 Deepreef 的核心引擎，负责：
  * - 管理对话上下文（ContextManager）
  * - 与 DeepSeek API 进行流式通信
  * - 执行工具调用（tool calling）
@@ -50,8 +50,11 @@ export interface ContextPolicyStatus {
  *   用户输入 → API 流式响应 → 工具调用（可选）→ 继续循环 → 最终输出
  */
 export class ReasonixEngine implements CoreEngine {
-  /** Deepicode 全局配置 */
-  private config: DeepicodeConfig
+  /** 当前会话 ID（公开供外部扩展使用） */
+  getSessionId(): string { return this.sessionId }
+
+  /** Deepreef 全局配置 */
+  private config: DeepreefConfig
   /** 上下文管理器，负责维护消息历史和 system prompt */
   private ctx: ContextManager
   /** 注册的工具集合，key 为工具名 */
@@ -178,7 +181,7 @@ export class ReasonixEngine implements CoreEngine {
     return { status: "queued", queueLength: this.pendingInstructionQueue.length }
   }
 
-  constructor(config: DeepicodeConfig, onStart?: () => void, sessionId?: string, customClient?: ChatClient, runtimeLogger?: RuntimeLogger) {
+  constructor(config: DeepreefConfig, onStart?: () => void, sessionId?: string, customClient?: ChatClient, runtimeLogger?: RuntimeLogger) {
     this.config = config
     this.ctx = new ContextManager(config.maxContextRounds, config.contextWindow)
     this.sessionId = sessionId ?? randomUUID()
@@ -233,7 +236,7 @@ export class ReasonixEngine implements CoreEngine {
     if (this.logger.isEnabled()) this.logger.info("engine.created", { provider: config.provider, model: config.model })
   }
 
-  static async recover(config: DeepicodeConfig, sessionId: string): Promise<ReasonixEngine> {
+  static async recover(config: DeepreefConfig, sessionId: string): Promise<ReasonixEngine> {
     if (!SessionLoader.validateSessionId(sessionId)) {
       throw new Error(`Invalid session ID for recover: ${sessionId}`)
     }
@@ -264,7 +267,7 @@ export class ReasonixEngine implements CoreEngine {
   }
 
   private rebindSessionWriter(sessionId: string): void {
-    const sessionPath = resolve(process.cwd(), ".deepicode", "sessions", `${sessionId}.jsonl`)
+    const sessionPath = resolve(process.cwd(), ".deepreef", "sessions", `${sessionId}.jsonl`)
     const writer = new AsyncSessionWriter(sessionPath)
     writer.init().catch(() => {})
     this.sessionWriter = writer
@@ -438,7 +441,7 @@ export class ReasonixEngine implements CoreEngine {
   }
 
   /** 运行时更新引擎配置（用于 /model 命令切换 Provider） */
-  updateConfig(partial: Partial<DeepicodeConfig>): void {
+  updateConfig(partial: Partial<DeepreefConfig>): void {
     const providerChanged = partial.provider !== undefined && partial.provider !== this.config.provider
     Object.assign(this.config, partial)
     if (partial.contextWindow !== undefined) {

@@ -1,6 +1,6 @@
 import { readdir, stat } from "node:fs/promises"
 import { resolve } from "node:path"
-import type { AgentTool } from "@deepicode/core"
+import type { AgentTool } from "@deepreef/core"
 import { safeStringify } from "./safe-stringify.js"
 
 export function createListDirTool(): AgentTool {

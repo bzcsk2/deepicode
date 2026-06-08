@@ -10,7 +10,7 @@
 
 1. **可原样复制的函数直接复制。**
 2. **类型或接口不同的代码，复制主体后只改 import、类型名和事件映射。**
-3. **只有 `deepicode` 特有的 Engine/TUI 接线代码才新写。**
+3. **只有 `deepreef` 特有的 Engine/TUI 接线代码才新写。**
 4. 禁止在没有说明原因的情况下重写 `freellmapi` 已有的 keyless、SSE、错误分类、429 惩罚和冷却算法。
 5. 复制源码时保留关键来源注释，并确认 `freellmapi` 的 MIT 版权声明随分发要求得到满足。
 
@@ -22,7 +22,7 @@
 
 ## 1. 目标
 
-在 `deepicode` 中增加：
+在 `deepreef` 中增加：
 
 1. `kilo` provider：匿名、无需 API Key。
 2. `llm7` provider：匿名、无需 API Key。
@@ -69,9 +69,9 @@
 
 必须适配：
 
-- `freellmapi` 输出 `ChatCompletionChunk`；`deepicode` 输出 `DeepSeekStreamEvent`，需保留 `deepicode` 现有 tool call 聚合与事件映射。
-- `freellmapi` 使用 `max_tokens`；`deepicode` 当前使用 `max_completion_tokens`。移植后允许按 provider capability 决定字段，首版 Kilo/LLM7 应使用它们真实兼容的字段。
-- `AbortSignal` 必须继续使用 `deepicode` 外部传入的 signal；不能用内部 timeout controller 覆盖用户 abort。应组合 signal 或沿用现有 watchdog。
+- `freellmapi` 输出 `ChatCompletionChunk`；`deepreef` 输出 `DeepSeekStreamEvent`，需保留 `deepreef` 现有 tool call 聚合与事件映射。
+- `freellmapi` 使用 `max_tokens`；`deepreef` 当前使用 `max_completion_tokens`。移植后允许按 provider capability 决定字段，首版 Kilo/LLM7 应使用它们真实兼容的字段。
+- `AbortSignal` 必须继续使用 `deepreef` 外部传入的 signal；不能用内部 timeout controller 覆盖用户 abort。应组合 signal 或沿用现有 watchdog。
 
 ### B. 模型目录与已知风险
 
@@ -94,7 +94,7 @@
 - Free Auto 候选目录
 - README 风险说明
 
-不要复制 SQLite migration、key sentinel 或加密 key 存储逻辑。`deepicode` 没有该数据库架构，keyless provider 直接通过 provider capability 表达。
+不要复制 SQLite migration、key sentinel 或加密 key 存储逻辑。`deepreef` 没有该数据库架构，keyless provider 直接通过 provider capability 表达。
 
 ### C. 429 惩罚与成功恢复
 
@@ -156,7 +156,7 @@
 
 - `packages/core/src/free-auto/router.ts` 的 `isRetryableBeforeOutput()`。
 
-必须保留 `deepicode` 特有保护：流已经产生文本、reasoning 或 tool call 后，禁止跨 provider 重放。
+必须保留 `deepreef` 特有保护：流已经产生文本、reasoning 或 tool call 后，禁止跨 provider 重放。
 
 ## 3. Provider 与模型目录
 
@@ -291,7 +291,7 @@ interface FreeRouteHealth {
 建议新增：
 
 - `packages/core/src/free-auto/catalog.ts`
-  - 从 `freellmapi` migrations/provider 注册复制候选定义、能力、base URL、模型 ID；补充 `deepicode` 所需基础优先级。
+  - 从 `freellmapi` migrations/provider 注册复制候选定义、能力、base URL、模型 ID；补充 `deepreef` 所需基础优先级。
 - `packages/core/src/free-auto/router.ts`
   - 从 `freellmapi/services/router.ts` 复制 429 penalty；从 `ratelimit.ts` 复制 cooldown；从 `routes/proxy.ts` 复制可回退错误分类。
 - `packages/core/src/free-auto/client.ts`
@@ -351,7 +351,7 @@ Free Auto 每次选择或故障转移时发出状态事件，至少包含：
 
 ### 6.1 复制来源到目标的映射
 
-| freellmapi 源码 | deepicode 目标 | 操作 |
+| freellmapi 源码 | deepreef 目标 | 操作 |
 |---|---|---|
 | `server/src/providers/base.ts` 的 timeout/SSE 逻辑 | `packages/core/src/client.ts` 或 `openai-compat-client.ts` | 复制主体，适配事件类型和外部 AbortSignal |
 | `server/src/providers/openai-compat.ts` 的 `keyless`/`authHeader`/请求构造 | `packages/core/src/client.ts` | 复制主体，保留现有 tool call 聚合 |
@@ -360,9 +360,9 @@ Free Auto 每次选择或故障转移时发出状态事件，至少包含：
 | `server/src/services/router.ts` 的 penalty 函数 | `free-auto/router.ts` | 直接复制并把 modelDbId 改成 route key |
 | `server/src/services/ratelimit.ts` 的 cooldown 函数 | `free-auto/router.ts` 或 `cooldown.ts` | 直接复制，去掉 DB/keyId |
 | `server/src/routes/proxy.ts` 的 retryable 错误判断 | `free-auto/router.ts` | 复制判断规则，增加“流已开始不可回退” |
-| `server/src/scripts/test-all-models.ts` 的最小 probe 思路 | 手工 smoke test 或独立脚本 | 复制请求模式，适配 deepicode client |
+| `server/src/scripts/test-all-models.ts` 的最小 probe 思路 | 手工 smoke test 或独立脚本 | 复制请求模式，适配 deepreef client |
 
-### 6.2 deepicode 必须新写的薄适配
+### 6.2 deepreef 必须新写的薄适配
 
 以下内容是两个项目架构不同，无法直接复制：
 
@@ -455,7 +455,7 @@ Free Auto 每次选择或故障转移时发出状态事件，至少包含：
 ## 9. 实施顺序
 
 1. 建立复制记录：逐项列出要从 `freellmapi` 移植的函数/代码块。
-2. 复制 Kilo/LLM7 provider 配置、model ID、context 和风险注释到 `deepicode` 配置。
+2. 复制 Kilo/LLM7 provider 配置、model ID、context 和风险注释到 `deepreef` 配置。
 3. 复制 `keyless/authHeader` 与 SSE/timeout 健壮性逻辑到现有 client，完成配置/client 单元测试。
 4. 将 `loop.ts` 的 client 类型改为通用 `ChatClient`，确保现有测试仍通过。
 5. 从 `freellmapi` 复制 penalty、cooldown 和 retryable-error 判断，做最少类型适配。

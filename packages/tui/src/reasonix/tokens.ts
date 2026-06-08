@@ -1,5 +1,5 @@
-/** Theme tokens adapted from Reasonix for deepicode.
- *  Colors are cast to `any` because @deepicode/ink's type system expects
+/** Theme tokens adapted from Reasonix for deepreef.
+ *  Colors are cast to `any` because @deepreef/ink's type system expects
  *  Color | keyof Theme, but hex strings work at runtime. */
 
 /**

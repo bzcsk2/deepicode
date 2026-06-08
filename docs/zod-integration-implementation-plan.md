@@ -1,22 +1,22 @@
-# Deepicode Zod 4 集成实施方案
+# Deepreef Zod 4 集成实施方案
 
-> 供实施 Agent 使用。本文定义“Deepicode 支持 Zod”的首版范围和实施步骤，不代表功能已经完成。
+> 供实施 Agent 使用。本文定义“Deepreef 支持 Zod”的首版范围和实施步骤，不代表功能已经完成。
 
 ## 0. 目标定义
 
 “支持 Zod”首版定义为：
 
 1. 插件作者可以使用 Zod 4 schema 声明插件工具参数。
-2. Deepicode 使用 Zod 4 官方公开 API 自动生成发给 LLM 的 JSON Schema。
-3. 插件工具执行前，Deepicode 使用同一个 schema 验证并转换模型生成的参数。
-4. Deepicode 的高风险外部配置边界使用 Zod 校验，替换裸 `JSON.parse(...) as Type` 和分散手工校验。
+2. Deepreef 使用 Zod 4 官方公开 API 自动生成发给 LLM 的 JSON Schema。
+3. 插件工具执行前，Deepreef 使用同一个 schema 验证并转换模型生成的参数。
+4. Deepreef 的高风险外部配置边界使用 Zod 校验，替换裸 `JSON.parse(...) as Type` 和分散手工校验。
 5. 保持现有 JSON Schema 工具与旧插件完全兼容。
 
 首版不包括：
 
 - 不把全部内置工具参数一次性改写成 Zod。
 - 不使用 Zod 验证每一个 SSE chunk、JSON-RPC 消息或 session JSONL 记录。
-- 不复制整个 Zod 仓库到 Deepicode。
+- 不复制整个 Zod 仓库到 Deepreef。
 - 不使用实验性的 `z.fromJSONSchema()` 作为核心运行路径。
 
 ## 1. 总原则：依赖官方包，复用源码模式，不复制整库
@@ -28,13 +28,13 @@ Zod 源码位于：
 - 当前版本：`4.4.3`
 - License：MIT
 
-Deepicode 应添加正式依赖：
+Deepreef 应添加正式依赖：
 
 ```json
 "zod": "4.4.3"
 ```
 
-开发验证时可把 `/vol4/Agent/zod/packages/zod` 作为源码参考和测试 oracle，但最终 Deepicode 不应依赖绝对路径 `/vol4/Agent/zod`，否则项目离开当前机器后无法安装。
+开发验证时可把 `/vol4/Agent/zod/packages/zod` 作为源码参考和测试 oracle，但最终 Deepreef 不应依赖绝对路径 `/vol4/Agent/zod`，否则项目离开当前机器后无法安装。
 
 优先使用 Zod 官方公开 API：
 
@@ -54,7 +54,7 @@ Deepicode 应添加正式依赖：
 
 复制 Zod 源码示例或测试模式时，保留来源说明并遵守 MIT License。
 
-## 2. 已确认的 Deepicode 现状
+## 2. 已确认的 Deepreef 现状
 
 ### 2.1 插件层已有未完成的 Zod 适配
 
@@ -104,7 +104,7 @@ Deepicode 应添加正式依赖：
 - `packages/mcp/src/auth.ts`
 - `packages/tui/src/settings.ts`
 - `packages/tui/src/i18n/persist.ts`
-- `packages/core/src/config.ts` 中的 `.deepicode/last-config.json`
+- `packages/core/src/config.ts` 中的 `.deepreef/last-config.json`
 - `packages/core/src/runtime-logger.ts` 的日志配置
 - `packages/core/src/context/policy-store.ts`
 
@@ -138,7 +138,7 @@ server: () => ({
 建议新增公开 helper：
 
 ```ts
-import { definePluginTool } from "@deepicode/plugin"
+import { definePluginTool } from "@deepreef/plugin"
 import { z } from "zod"
 
 const inputSchema = z.object({
@@ -176,7 +176,7 @@ interface StandardSchemaLike {
 
 interface SchemaAwarePluginTool<TInput = unknown, TOutput = unknown> {
   (args: TInput): TOutput | Promise<TOutput>
-  deepicodeTool: {
+  deepreefTool: {
     description: string
     inputSchema: StandardSchemaLike
   }
@@ -318,7 +318,7 @@ schema["~standard"].jsonSchema.input({ target: "draft-07" })
 
 ## 8. 源码参考与复制映射
 
-| Zod 源码/文档 | Deepicode 目标 | 用法 |
+| Zod 源码/文档 | Deepreef 目标 | 用法 |
 |---|---|---|
 | `packages/zod/src/index.ts`、`v4/classic/external.ts` | package imports | 使用公开 `z`、`toJSONSchema`、`prettifyError` |
 | `packages/docs/content/json-schema.mdx` | plugin tool adapter | 复制官方 `toJSONSchema` 使用模式，不复制内部 generator |

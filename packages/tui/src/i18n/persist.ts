@@ -1,14 +1,14 @@
-/** Language preference persistence — reads/writes .deepicode/lang.json */
+/** Language preference persistence — reads/writes .deepreef/lang.json */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Locale } from './strings.js';
 import { LangConfigSchema } from '../settings-schema.js';
 
-const LANG_FILE = '.deepicode/lang.json';
+const LANG_FILE = '.deepreef/lang.json';
 
 function getConfigDir(): string {
-  return join(process.cwd(), '.deepicode');
+  return join(process.cwd(), '.deepreef');
 }
 
 export function loadLang(): Locale | null {

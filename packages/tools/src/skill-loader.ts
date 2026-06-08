@@ -2,6 +2,11 @@ import { readFile, readdir, stat } from "node:fs/promises"
 import { join, isAbsolute, resolve } from "node:path"
 import { homedir } from "node:os"
 
+export interface SkillSource {
+  pluginId?: string
+  path: string
+}
+
 export interface SkillDef {
   name: string
   description: string
@@ -9,10 +14,7 @@ export interface SkillDef {
   content: string
   baseDir?: string
   tags?: string[]
-  source?: {
-    pluginId?: string
-    path: string
-  }
+  source?: SkillSource
 }
 
 const FRONTMATTER_RE = /^---\n([\s\S]+?)\n---\n([\s\S]*)$/
@@ -37,7 +39,7 @@ function parseFrontmatter(raw: string): { frontmatter: Record<string, unknown>; 
   return { frontmatter, content: match[2].trim() }
 }
 
-export async function loadSkillsDirs(dirs: string[]): Promise<SkillDef[]> {
+export async function loadSkillsDirs(dirs: string[], source?: SkillSource): Promise<SkillDef[]> {
   const results: SkillDef[] = []
   for (const dir of dirs) {
     let entries: string[]
@@ -57,7 +59,15 @@ export async function loadSkillsDirs(dirs: string[]): Promise<SkillDef[]> {
       const whenToUse = frontmatter.when_to_use as string | undefined
       const tagsRaw = frontmatter.tags
       const tags = Array.isArray(tagsRaw) ? tagsRaw.map(String) : typeof tagsRaw === "string" ? tagsRaw.split(",").map(s => s.trim()) : undefined
-      results.push({ name, description: desc, whenToUse, content, baseDir: skillDir, tags })
+      results.push({
+        name,
+        description: desc,
+        whenToUse,
+        content,
+        baseDir: skillDir,
+        tags,
+        source: source ? { ...source, path: `${source.path}/${entry}` } : undefined,
+      })
     }
   }
   return results

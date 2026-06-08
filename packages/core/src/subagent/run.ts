@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { AgentTool } from "../interface.js"
 import { ReasonixEngine } from "../engine.js"
-import type { DeepicodeConfig } from "../config.js"
+import type { DeepreefConfig } from "../config.js"
 import { agentConfigFor } from "../agent.js"
 import { SubagentRegistry } from "./registry.js"
 import { checkSubagentPermission } from "./permission.js"
@@ -15,10 +15,10 @@ import type {
 } from "./types.js"
 
 export class SubagentRunner {
-  private config: DeepicodeConfig
+  private config: DeepreefConfig
   private registry: SubagentRegistry
 
-  constructor(config: DeepicodeConfig, registry?: SubagentRegistry) {
+  constructor(config: DeepreefConfig, registry?: SubagentRegistry) {
     this.config = config
     this.registry = registry ?? new SubagentRegistry()
   }

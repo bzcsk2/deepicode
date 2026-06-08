@@ -1,6 +1,6 @@
 import { platform } from "node:os"
 
-const BASE_PROMPT = `你是 deepicode，一个终端原生的 AI 编程助手。
+const BASE_PROMPT = `你是 deepreef，一个终端原生的 AI 编程助手。
 你使用 DeepSeek 作为推理引擎，通过工具调用在命令行中完成软件工程任务。
 
 <env>
@@ -225,7 +225,7 @@ export function buildSystemPrompt(cwd: string, options?: { osPlatform?: string; 
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
   const osPlatform = options?.osPlatform ?? platform()
   const shellBackend = options?.shellBackend
-    ?? process.env.DEEPICODE_SHELL
+    ?? process.env.DEEPREEF_SHELL
     ?? (osPlatform === "win32" ? "PowerShell (pwsh.exe preferred, powershell.exe fallback)" : osPlatform === "darwin" ? "/bin/bash" : "bash")
 
   return BASE_PROMPT

@@ -1,5 +1,5 @@
 {
-  "name": "@deepicode/core",
+  "name": "@deepreef/core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@deepicode/security": "workspace:*",
+    "@deepreef/security": "workspace:*",
     "zod": "4.4.3"
   }
 }

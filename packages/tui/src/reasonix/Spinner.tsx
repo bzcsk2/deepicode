@@ -1,4 +1,4 @@
-import { Box, Text, useAnimationFrame } from '@deepicode/ink';
+import { Box, Text, useAnimationFrame } from '@deepreef/ink';
 import React from 'react';
 
 // 动画帧序列定义

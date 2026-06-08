@@ -4,6 +4,6 @@ dist/
 *.log
 .env
 api-key
-.deepicode/
-Deepicode*.md
+.deep*/
+Deepreef*.md
 LOGSYS/
