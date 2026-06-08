@@ -1702,11 +1702,21 @@ packages/tui/src/bridge.tsx  — createBridge 新增 onUserInput 回调
 ```bash
 bun run typecheck                    # 通过
 bun run --cwd packages/memory typecheck  # 通过
+bun test packages/memory/test/deepreef-*.test.ts  # 27/27 通过
 ```
 
-### 20.4 仍需后续处理
+### 20.4 测试门禁（已建立）
 
-- `onGenerationComplete` 未接线（bridge 已实现，CLI 未接入）
+| 测试文件 | 覆盖内容 | 状态 |
+|----------|----------|------|
+| `test/deepreef-memory-service.test.ts` | service start/stop/CRUD/evict | ✅ 12/12 |
+| `test/deepreef-memory-tools.test.ts` | agent tool shape/execute/full flow | ✅ 10/10 |
+| `test/deepreef-memory-bridge.test.ts` | bridge hook lifecycle/autoObserve | ✅ 10/10 |
+| `test/deepreef-memory-migration.test.ts` | migrate tool shape/schema/execute | ✅ 3/3 |
+| `packages/cli/src/__tests__/memory-integration.test.ts` | CLI import/tool registration | ✅ 2/2 |
+
+### 20.5 仍需后续处理
+
 - `onPreToolUse` 明确不接入（DONE 已列为限制）
 - Subagent start/stop 观察未接入
-- 测试门禁待建立（详见 review 文档第 3 节）
+- P0-2 queue dedup（fromQueue flag）已实现，待集成验证

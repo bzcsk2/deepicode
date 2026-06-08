@@ -101,6 +101,7 @@ export function createBridge(
   let running = false;
   let processingQueue = false;
   let activeRequest = 0;
+  let fromQueue = false;
 
   const updateTimeline = (mutate: (items: TimelineItem[]) => TimelineItem[]) => {
     setState(prev => ({ ...prev, timeline: mutate(prev.timeline) }));
@@ -149,14 +150,18 @@ export function createBridge(
       }
       setTimeout(() => {
         processingQueue = false;
-        void submit(next);
+        fromQueue = true;
+        void submit(next).finally(() => { fromQueue = false; });
       }, 0);
       return { ...prev, messageQueue: rest };
     });
   };
 
   const submit = async (text: string) => {
-    onUserInput?.(text);
+    // P0-2: Only observe fresh user input, not queue re-submissions
+    if (!fromQueue) {
+      onUserInput?.(text);
+    }
     if (running) {
       const result = engine.enqueueInstruction(text);
       if (result.status === 'queued') {

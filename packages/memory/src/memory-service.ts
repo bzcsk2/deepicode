@@ -222,11 +222,13 @@ export class MemoryService {
     const iep = imageEmbeddingProvider as EmbeddingProvider | null
 
     // P1-2: Config priority — explicit constructor args > env vars
+    // advancedTools acts as master switch: when false, all advanced features are disabled
     const uc = this.userConfig
-    const shouldEnableGraph = uc.enableGraph ?? isGraphExtractionEnabled()
-    const shouldEnableSlots = uc.enableSlots ?? isSlotsEnabled()
-    const shouldEnableReflect = uc.enableReflect ?? isReflectEnabled()
-    const shouldEnableConsolidation = uc.enableConsolidation ?? isConsolidationEnabled()
+    const advancedEnabled = uc.advancedTools ?? false
+    const shouldEnableGraph = advancedEnabled && (uc.enableGraph ?? isGraphExtractionEnabled())
+    const shouldEnableSlots = advancedEnabled && (uc.enableSlots ?? isSlotsEnabled())
+    const shouldEnableReflect = advancedEnabled && (uc.enableReflect ?? isReflectEnabled())
+    const shouldEnableConsolidation = advancedEnabled && (uc.enableConsolidation ?? isConsolidationEnabled())
 
     registerPrivacyFunction(sdk)
     registerObserveFunction(sdk, kv, this.dedupMap, this.config.maxObservationsPerSession)

@@ -82,7 +82,7 @@ function detectProvider(env: Record<string, string>): ProviderConfig {
   if (hasRealValue(env["GEMINI_API_KEY"]) || hasRealValue(env["GOOGLE_API_KEY"])) {
     if (!hasRealValue(env["GEMINI_API_KEY"]) && hasRealValue(env["GOOGLE_API_KEY"])) {
       process.stderr.write(
-        "[agentmemory] GOOGLE_API_KEY detected — treating as GEMINI_API_KEY. " +
+        "[deepreef:memory] GOOGLE_API_KEY detected — treating as GEMINI_API_KEY. " +
           "Set GEMINI_API_KEY in ~/.agentmemory/.env to silence this warning.\n",
       );
     }
@@ -108,7 +108,7 @@ function detectProvider(env: Record<string, string>): ProviderConfig {
     ) {
       warnPremiumModelShown = true;
       process.stderr.write(
-        `[agentmemory] OPENROUTER_MODEL=${model} is in the premium tier. ` +
+        `[deepreef:memory] OPENROUTER_MODEL=${model} is in the premium tier. ` +
           `Background compression on this model can cost $5+/day under active use. ` +
           `Cheaper alternatives with comparable quality for memory compression: ` +
           `deepseek/deepseek-v4-pro, deepseek/deepseek-chat, qwen/qwen3-coder. ` +
@@ -126,7 +126,7 @@ function detectProvider(env: Record<string, string>): ProviderConfig {
   const allowAgentSdk = env["AGENTMEMORY_ALLOW_AGENT_SDK"] === "true";
   if (!allowAgentSdk) {
     process.stderr.write(
-      "[agentmemory] No LLM provider key found " +
+      "[deepreef:memory] No LLM provider key found " +
         "(ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, MINIMAX_API_KEY, OPENAI_API_KEY). " +
         "LLM-backed compression and summarization are DISABLED — using no-op provider. " +
         "This is the safe default: the agent-sdk fallback used to spawn Claude Agent SDK " +
@@ -144,7 +144,7 @@ function detectProvider(env: Record<string, string>): ProviderConfig {
   }
 
   process.stderr.write(
-    "[agentmemory] WARNING: agent-sdk fallback enabled via AGENTMEMORY_ALLOW_AGENT_SDK=true. " +
+    "[deepreef:memory] WARNING: agent-sdk fallback enabled via AGENTMEMORY_ALLOW_AGENT_SDK=true. " +
       "This spawns @anthropic-ai/claude-agent-sdk child sessions that can trigger the Stop-hook " +
       "recursion loop (#149 follow-up). A SDK-child env marker is set to block re-entry, " +
       "but prefer setting a real API key in ~/.agentmemory/.env instead.\n",
@@ -443,7 +443,7 @@ export function loadFallbackConfig(): FallbackConfig {
       // detectProvider() returned the noop provider.
       if (p === "agent-sdk" && !allowAgentSdk) {
         process.stderr.write(
-          "[agentmemory] Ignoring FALLBACK_PROVIDERS entry 'agent-sdk' " +
+          "[deepreef:memory] Ignoring FALLBACK_PROVIDERS entry 'agent-sdk' " +
             "(AGENTMEMORY_ALLOW_AGENT_SDK is not 'true'). The agent-sdk " +
             "fallback can spawn Claude Agent SDK child sessions that trigger " +
             "the Stop-hook recursion loop (#149 follow-up). Opt in explicitly " +

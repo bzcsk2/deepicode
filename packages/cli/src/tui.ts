@@ -6,6 +6,7 @@ import { buildSystemPrompt } from "@deepreef/core"
 import { createDefaultTools, clearReadTracker, normalizePlatform, resolveShellBackend } from "@deepreef/tools"
 import { McpHost, createListMcpResourcesTool, createReadMcpResourceTool, createMcpAuthTool, createListMcpToolsTool, createCallMcpToolTool, setMcpHost } from "@deepreef/mcp"
 import { PluginRuntime, pluginToolsToAgentTools } from "@deepreef/plugin"
+import type { ToolCallHooks } from "@deepreef/security"
 // P1-4: Memory is dynamically imported when enabled to avoid loading when DEEPREEF_MEMORY=false
 import React from "react"
 import { wrappedRender as render } from "@deepreef/ink"
@@ -78,21 +79,27 @@ async function main(): Promise<void> {
   // P1-4: Dynamic import — only load @deepreef/memory when enabled
   let memoryService: import("@deepreef/memory").MemoryService | undefined
   let memoryBridge: import("@deepreef/memory").DeepreefMemoryBridge | undefined
+  let memoryHookAdapter: ToolCallHooks | undefined
   const enableMemory = process.env.DEEPREEF_MEMORY !== "false"
   if (enableMemory) {
     try {
       const memory = await import("@deepreef/memory")
+      // P1-2: Config from env vars with sensible defaults
+      const memoryAutoObserve = process.env.DEEPREEF_MEMORY_AUTO_OBSERVE !== "false"
+      const memoryInjectContext = process.env.DEEPREEF_MEMORY_INJECT_CONTEXT !== "false"
+      const memoryAdvanced = process.env.DEEPREEF_MEMORY_ADVANCED === "true"
+
       memoryService = new memory.MemoryService({
-        autoObserve: true,
-        injectContext: true,
-        advancedTools: process.env.DEEPREEF_MEMORY_ADVANCED === "true",
+        autoObserve: memoryAutoObserve,
+        injectContext: memoryInjectContext,
+        advancedTools: memoryAdvanced,
         enableGraph: process.env.DEEPREEF_MEMORY_GRAPH === "true",
         enableConsolidation: process.env.DEEPREEF_MEMORY_CONSOLIDATE === "true",
         enableReflect: process.env.DEEPREEF_MEMORY_REFLECT === "true",
         enableSlots: process.env.DEEPREEF_MEMORY_SLOTS === "true",
       })
       await memoryService.start()
-      memoryBridge = new memory.DeepreefMemoryBridge(memoryService, { autoObserve: true, injectContext: true })
+      memoryBridge = new memory.DeepreefMemoryBridge(memoryService, { autoObserve: memoryAutoObserve, injectContext: memoryInjectContext })
 
       // P1-1: Session lifecycle — call onSessionStart after service is ready
       await memoryBridge.onSessionStart(engine.getSessionId()).catch(() => {})
@@ -107,8 +114,8 @@ async function main(): Promise<void> {
       engine.setSystemPrompt(baseSystemPrompt)
 
       // Wire bridge hooks into engine's HookManager
-      // P0-2: onLoopEvent no longer observes assistant_delta for prompt_submit
-      const hookAdapter = {
+      // P0-2: onLoopEvent only handles generation complete (done event)
+      const hookAdapter: ToolCallHooks = {
         afterToolCall: async (toolName: string, result: { content: string; isError: boolean }) => {
           if (result.isError) {
             await memoryBridge?.onPostToolFailure(engine.getSessionId(), toolName, result.content).catch(() => {})
@@ -116,7 +123,15 @@ async function main(): Promise<void> {
             await memoryBridge?.onPostToolUse(engine.getSessionId(), toolName, result).catch(() => {})
           }
         },
+        onLoopEvent: async (event: Record<string, unknown>) => {
+          // P1-1: Wire onGenerationComplete for the done event
+          if (event.role === "done") {
+            await memoryBridge?.onGenerationComplete(engine.getSessionId()).catch(() => {})
+          }
+        },
       }
+      // P1-1: Save reference for cleanup on exit
+      memoryHookAdapter = hookAdapter
       engine.hookManager.addHooks(hookAdapter)
 
       // P1-3: Register memory_migrate tool + P0-3 fix via dynamic import
@@ -198,6 +213,10 @@ async function main(): Promise<void> {
   } finally {
     // Phase C: Stop memory subsystem before engine (best-effort)
     await memoryBridge?.onSessionEnd(engine.getSessionId()).catch(() => {})
+    // P1-1: Remove hook adapter to avoid duplicate observations on restart
+    if (memoryHookAdapter) {
+      engine.hookManager.removeHooks(memoryHookAdapter)
+    }
     await memoryService?.stop().catch(() => {})
     // LIFE-01: close engine (tokenizer worker, logger, session writer)
     await engine.shutdown()
