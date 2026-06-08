@@ -1647,9 +1647,11 @@ packages/tui/src/bridge.tsx  — createBridge 新增 onUserInput 回调
 
 ## 20. AgentMemory 原生集成修复轮（2026-06-09）
 
-依据 `docs/agentmemory-native-integration-review-fixes.md` 审查文档完成全部 P0 和关键 P1 修复。
+依据 `docs/agentmemory-native-integration-review-fixes.md` 审查文档完成全部 P0 和关键 P1 修复，随后通过二轮审查修复剩余问题。
 
 ### 20.1 修复清单
+
+**第一轮（698355f）**
 
 | 编号 | 优先级 | 内容 | 修改文件 |
 |------|--------|------|----------|
@@ -1661,6 +1663,16 @@ packages/tui/src/bridge.tsx  — createBridge 新增 onUserInput 回调
 | P1-3 | P1 | 导出并注册 `memory_migrate`，移除无用 store 参数 | `migrate.ts`, `index.ts`, `tui.ts` |
 | P1-4 | P1 | memory 改为动态 `import()`，`DEEPREEF_MEMORY=false` 时不加载模块 | `tui.ts` |
 | P1-5 | P1 | 日志前缀从 `[agentmemory]` 改为 `[deepreef:memory]` | `logger.ts` |
+
+**第二轮（a4be2b0）**
+
+| 编号 | 优先级 | 内容 | 修改文件 |
+|------|--------|------|----------|
+| FIX-1 | 高 | CLI memory-integration 测试修正导出名和路径 | `memory-integration.test.ts` |
+| FIX-2 | 高 | P0-2 队列去重：`fromQueue` 全局标志改为 per-call `isQueueResubmit` 参数 | `bridge.tsx` |
+| FIX-3 | 中 | consolidation timer 增加 `advancedTools` 门控 | `memory-service.ts` |
+| FIX-4 | 中 | `injectContext=false` 时跳过 `mem::context` 调用 | `tui.ts` |
+| FIX-5 | 低 | DONE.md 移除 `onGenerationComplete 未接线` 过时描述 | `DONE.md` |
 
 ### 20.2 关键变更说明
 
@@ -1677,6 +1689,16 @@ packages/tui/src/bridge.tsx  — createBridge 新增 onUserInput 回调
   机制：bridge.tsx 的 createBridge 新增 onUserInput 回调参数
         App.tsx 新增 onUserInput prop
         tui.ts 传递 memoryBridge.onPromptSubmit 作为回调
+```
+
+**P0-2 FIX-2：队列去重**
+
+```text
+旧：fromQueue 是全局 boolean，submit() 执行期间保持 true
+    → 用户在此期间的新输入被跳过
+新：submit(text, isQueueResubmit = false) per-call 参数
+    processQueue 调用 submit(next, true)，直接调用不传参
+    → 每次调用独立判断，新输入不受队列处理影响
 ```
 
 **P1-4：动态 import**
@@ -1696,12 +1718,29 @@ packages/tui/src/bridge.tsx  — createBridge 新增 onUserInput 回调
     显式构造参数 > 环境变量 > 默认值
 ```
 
+**FIX-3：consolidation timer 门控**
+
+```text
+旧：startTimers() 只检查 enableConsolidation，不检查 advancedTools
+    → advancedTools=false 时 timer 启动但 mem::consolidate-pipeline 未注册
+新：shouldConsolidate = advancedTools && enableConsolidation
+    → advancedTools=false 时不启动 timer
+```
+
+**FIX-4：injectContext=false 门控**
+
+```text
+旧：无论 memoryInjectContext 是否关闭，启动时都调用 mem::context
+新：if (memoryInjectContext) { ... mem::context ... }
+    → DEEPREEF_MEMORY_INJECT_CONTEXT=false 时不调用，不污染 system prompt
+```
+
 ### 20.3 验收
 
 ```bash
-bun run typecheck                    # 通过
-bun run --cwd packages/memory typecheck  # 通过
-bun test packages/memory/test/deepreef-*.test.ts  # 27/27 通过
+bun run typecheck                          # 通过
+bun run --cwd packages/memory typecheck    # 通过
+bun test packages/memory/test/deepreef-*.test.ts packages/cli/src/__tests__/memory-integration.test.ts  # 33/33 通过
 ```
 
 ### 20.4 测试门禁（已建立）
@@ -1712,10 +1751,10 @@ bun test packages/memory/test/deepreef-*.test.ts  # 27/27 通过
 | `test/deepreef-memory-tools.test.ts` | agent tool shape/execute/full flow | ✅ 10/10 |
 | `test/deepreef-memory-bridge.test.ts` | bridge hook lifecycle/autoObserve | ✅ 10/10 |
 | `test/deepreef-memory-migration.test.ts` | migrate tool shape/schema/execute | ✅ 3/3 |
-| `packages/cli/src/__tests__/memory-integration.test.ts` | CLI import/tool registration | ✅ 2/2 |
+| `packages/cli/src/__tests__/memory-integration.test.ts` | CLI import/tool registration/service lifecycle | ✅ 6/6 |
 
 ### 20.5 仍需后续处理
 
 - `onPreToolUse` 明确不接入（DONE 已列为限制）
 - Subagent start/stop 观察未接入
-- P0-2 queue dedup（fromQueue flag）已实现，待集成验证
+- 测试断言强度待加强（advancedTools 注册验证、autoObserve 观察计数、forget 后 recall 验证）
