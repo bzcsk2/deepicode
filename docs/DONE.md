@@ -1,6 +1,6 @@
 # Deepreef 完成记录
 
-最后更新：2026-06-08（AgentMemory 原生集成启动 + ECC 第四轮修复）
+最后更新：2026-06-08（AgentMemory 原生集成 Phase A~F 完成）
 
 本文只记录当前代码中仍然成立的已完成功能和已验证修复。
 未完成、待验收、明确暂缓和已驳回方案统一见 [TODO.md](TODO.md)。当前后续专项交接见 [ADVICE.md](ADVICE.md)。
@@ -1590,3 +1590,51 @@ tui.ts (CLI)
 | `~/.agentmemory` 迁移 | ✅ 已完成 | `migrateFromAgentMemory()` 复制 state 目录，跳过已存在的文件 |
 | `memory_migrate` 工具 | ✅ 已完成 | 可从 CLI 触发的迁移工具 |
 | typecheck | ✅ 已完成 | 0 错误 |
+
+---
+
+## 19. AgentMemory Phase F：稳定性验证
+
+| 子项 | 状态 | 说明 |
+|------|------|------|
+| 全量测试（核心包） | ✅ 已完成 | 1180 pass / 5 fail（预置 mode-selector + bridge，无新增） |
+| typecheck | ✅ 已完成 | 0 错误 |
+| 无 iii-engine 依赖 | ✅ 已完成 | 无 `iii-sdk`、`iii-engine` 引用 |
+| 启动故障隔离 | ✅ 已验证 | Memory init 失败不阻断 CLI 启动 |
+| 关闭清理 | ✅ 已完成 | `finally` 中 `memoryService.stop()` 清理所有 timer |
+| 记忆开关 `DEEPREEF_MEMORY=false` | ✅ 已完成 | 禁用后完全不加载 memory 包 |
+
+### 19.1 最终架构总结
+
+```text
+packages/memory/
+  src/
+    runtime/          MemoryRuntimeSdk (ISdk), MemoryStore (file KV)
+    functions/        57 个 mem::* 函数（原样复制自 agentmemory）
+    state/            索引、搜索、schema
+    providers/        LLM provider 适配层
+    bridge/           DeepreefMemoryBridge（生命周期桥梁）
+    tools.ts          AgentTool 工厂（6 个记忆工具）
+    migrate.ts        ~/.agentmemory 迁移
+    memory-service.ts 统一入口（start/stop/trigger）
+    hooks/            死代码（被 bridge 替代，@ts-nocheck 保留）
+
+packages/cli/src/tui.ts  — MemoryService init + HookManager 接线 + 工具注册
+
+依赖关系：@deepreef/memory → @deepreef/core（AgentTool 类型）
+         @deepreef/cli → @deepreef/memory（创建 + 接线）
+```
+
+### 19.2 与原始 agentmemory 的功能对照
+
+| 能力 | agentmemory (iii-engine) | deepreef memory |
+|------|------------------------|-----------------|
+| 记忆存储 | iii-engine KV | `MemoryStore` 文件 KV |
+| 函数注册 | `iii-sdk.registerFunction()` | `MemoryRuntimeSdk.registerFunction()` |
+| 函数触发 | `iii-sdk.trigger()` | `MemoryRuntimeSdk.trigger()` |
+| 生命周期 | 独立 MCP/REST 进程 | `DeepreefMemoryBridge` + `HookManager` |
+| 上下文注入 | 独立 hook 脚本写 stdout | `mem::context` 注入 system prompt |
+| BM25 索引 | iii-engine | `IndexPersistence` 文件持久化 |
+| 向量索引 | iii-engine | `VectorIndex` 内存 + 文件持久化 |
+| 工具暴露 | 53 个 MCP 工具 | 6 个原生 AgentTool（高级工具可配） |
+| AgentMemory 数据 | `~/.agentmemory` | `~/.deepreef/memory`（可迁移） |
