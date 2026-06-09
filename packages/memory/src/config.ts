@@ -125,17 +125,19 @@ function detectProvider(env: Record<string, string>): ProviderConfig {
 
   const allowAgentSdk = env["AGENTMEMORY_ALLOW_AGENT_SDK"] === "true";
   if (!allowAgentSdk) {
-    process.stderr.write(
-      "[deepreef:memory] No LLM provider key found " +
-        "(ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, MINIMAX_API_KEY, OPENAI_API_KEY). " +
-        "LLM-backed compression and summarization are DISABLED — using no-op provider. " +
-        "This is the safe default: the agent-sdk fallback used to spawn Claude Agent SDK " +
-        "child sessions which inherit Claude Code's plugin hooks and cause infinite Stop-hook " +
-        "recursion (#149 follow-up). To opt in to the agent-sdk fallback anyway, set both " +
-        "AGENTMEMORY_AUTO_COMPRESS=true AND AGENTMEMORY_ALLOW_AGENT_SDK=true — but be aware " +
-        "it will burn your Claude Pro allocation and may still recurse if you use it from " +
-        "inside Claude Code itself.\n",
-    );
+    // BM25-only memory is Deepreef's normal zero-config mode. Keep startup quiet
+    // unless the user explicitly asks for verbose memory diagnostics.
+    if (
+      env["DEEPREEF_MEMORY_VERBOSE"] === "1" ||
+      env["DEEPREEF_MEMORY_VERBOSE"] === "true" ||
+      env["AGENTMEMORY_VERBOSE"] === "1" ||
+      env["AGENTMEMORY_VERBOSE"] === "true"
+    ) {
+      process.stderr.write(
+        "[deepreef:memory] No LLM provider configured; using BM25-only memory. " +
+          "LLM-backed compression and summarization are disabled.\n",
+      );
+    }
     return {
       provider: "noop",
       model: "noop",

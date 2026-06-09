@@ -46,6 +46,24 @@ describe("MemoryService (Deepreef native)", () => {
     expect(uc.enableGraph).toBe(true)
   })
 
+  it("uses quiet BM25-only mode when no LLM provider is configured", () => {
+    const originalWrite = process.stderr.write
+    let stderr = ""
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      stderr += String(chunk)
+      return true
+    }) as typeof process.stderr.write
+
+    try {
+      new MemoryService({ dataDir: tempDir })
+    } finally {
+      process.stderr.write = originalWrite
+    }
+
+    expect(stderr).not.toContain("No LLM provider key found")
+    expect(stderr).not.toContain("Claude Pro allocation")
+  })
+
   it("advancedTools=false disables advanced features even when individual flags are true", async () => {
     const svc = new MemoryService({
       dataDir: tempDir,
