@@ -2,25 +2,29 @@
  * OrchestrationDashboard
  *
  * 三栏总览：Local Workers / Supervisor / Loop State
- * 这是 OpenTUI 的核心可视化入口，需保持简洁稳定。
+ * 这是 OpenTUI 的核心可视化入口。
  *
- * 样式说明：
- * - 使用 theme/colors 中的 bg.secondary 作为面板背景
- * - 边框使用 border.normal，聚焦时切换为 border.focus
- * - 后续手动调整列宽时，需同步修改 layout.breakpoints
+ * 样式说明（中文）：
+ * - 面板背景使用 colors.bg.secondary，便于与主背景区分
+ * - 边框使用 border.normal，聚焦态可切换为 border.focus
+ * - 状态颜色严格来自 colors.status / colors.task，保证全局一致
+ * - 后续手动调整三栏比例时，只需修改 flex 或 layout.panelGap
  */
 
 import React from "react";
 import { colors } from "../../theme/colors.js";
 import { layout } from "../../theme/layout.js";
+import { tuiStore, selectors, useStore } from "../../store/index.js"; // 注意：需在 index.ts 导出
 
 export interface OrchestrationDashboardProps {
-  /** 当前终端宽度（列数） */
   terminalWidth: number;
 }
 
-export const OrchestrationDashboard: React.FC<OrchestrationDashboardProps> = ({ terminalWidth }) => {
-  const isWide = terminalWidth >= layout.breakpoints.wide;
+export const OrchestrationDashboard: React.FC<OrchestrationDashboardProps> = () => {
+  // 使用细粒度 selector，只在对应数据变化时重绘该面板
+  const workers = useStore(tuiStore, selectors.workers);
+  const supervisors = useStore(tuiStore, selectors.supervisors);
+  const loop = useStore(tuiStore, selectors.loop);
 
   return (
     <box style={{ flexDirection: "row", gap: layout.panelGap }}>
@@ -34,9 +38,13 @@ export const OrchestrationDashboard: React.FC<OrchestrationDashboardProps> = ({ 
           padding: layout.padding.content,
         }}
       >
-        <text bold color={colors.fg.primary}>Local Workers</text>
-        {/* TODO: 接入 WorkerStore 后渲染真实行 */}
-        <text color={colors.fg.muted}>（待实现）</text>
+        <text bold color={colors.fg.primary}>Local Workers ({workers.length})</text>
+        {workers.length === 0 && <text color={colors.fg.muted}>暂无 Worker</text>}
+        {workers.slice(0, layout.maxVisibleRows).map(w => (
+          <text key={w.id} color={colors.task[w.status] ?? colors.fg.primary}>
+            {w.status === "running" ? "◉" : "○"} {w.modelTarget} {w.status} {w.currentTask ?? ""} {(w.elapsedMs / 1000).toFixed(0)}s
+          </text>
+        ))}
       </box>
 
       {/* Supervisor 面板 */}
@@ -49,8 +57,13 @@ export const OrchestrationDashboard: React.FC<OrchestrationDashboardProps> = ({ 
           padding: layout.padding.content,
         }}
       >
-        <text bold color={colors.fg.primary}>Supervisor</text>
-        <text color={colors.fg.muted}>（待实现）</text>
+        <text bold color={colors.fg.primary}>Supervisor ({supervisors.length})</text>
+        {supervisors.length === 0 && <text color={colors.fg.muted}>暂无 Supervisor</text>}
+        {supervisors.slice(0, layout.maxVisibleRows).map(s => (
+          <text key={s.id} color={colors.status[s.status] ?? colors.fg.primary}>
+            ◆ {s.modelTarget} {s.status} {s.reviewingWorkerId ? `reviewing ${s.reviewingWorkerId}` : ""}
+          </text>
+        ))}
       </box>
 
       {/* Loop State 面板 */}
@@ -64,7 +77,14 @@ export const OrchestrationDashboard: React.FC<OrchestrationDashboardProps> = ({ 
         }}
       >
         <text bold color={colors.fg.primary}>Loop State</text>
-        <text color={colors.fg.muted}>（待实现）</text>
+        <text color={colors.status.info}>
+          {loop.phase} · attempt {loop.attempt}
+        </text>
+        {loop.lastTransition && (
+          <text color={colors.fg.muted}>
+            {loop.lastTransition.from} → {loop.lastTransition.to}
+          </text>
+        )}
       </box>
     </box>
   );
