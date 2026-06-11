@@ -18,6 +18,8 @@ import { MainLayout } from "./components/layout/MainLayout.js";
 import { tuiStore, replayEvents, sampleOrchestrationFixture } from "./store/index.js";
 import { uiStore, switchPage, closeDetail, pageKeyMap } from "./store/ui-store.js";
 import type { PageId } from "./store/ui-store.js";
+// TUI-OT-60: 演示 orchestration 事件（按 d 键触发）
+import { runDemoSequence } from "./adapters/demo-orchestration.js";
 
 /**
  * 恢复终端状态（防止鼠标跟踪乱码）
@@ -68,6 +70,14 @@ function setupKeyHandlers(renderer: any): void {
       if (ui.showDetail) {
         closeDetail();
       }
+      return;
+    }
+
+    // d 键触发演示序列（TUI-OT-60 测试）
+    if (key === "d" || key === "D") {
+      console.error("[OpenTUI] 启动演示序列...");
+      void runDemoSequence();
+      return;
     }
   });
 }
