@@ -15,6 +15,7 @@ import { OrchestrationDashboard } from "../dashboard/OrchestrationDashboard.js";
 import { WorkerDetailView } from "../workers/WorkerDetailView.js";
 import { SupervisorDetailView } from "../supervisor/SupervisorDetailView.js";
 import { LoopDetailView } from "../loop/LoopDetailView.js";
+import { ChatPage } from "../chat/ChatPage.js";
 import { colors } from "../../theme/colors.js";
 import type { TuiState } from "../../store/types.js";
 import type { PageId, UiState } from "../../store/ui-store.js";
@@ -38,9 +39,11 @@ function renderPageContent(
   switch (page) {
     case "chat":
       return (
-        <text color={colors.fg.muted}>
-          Chat 页面（TUI-OT-50 实现）
-        </text>
+        <ChatPage
+          tuiState={tuiState}
+          onSubmit={(text) => console.error("[Chat] submit:", text)}
+          onInterrupt={() => console.error("[Chat] interrupt")}
+        />
       );
 
     case "orchestration":

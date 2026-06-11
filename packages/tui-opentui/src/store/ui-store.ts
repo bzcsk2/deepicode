@@ -12,6 +12,23 @@ import { createStore } from "./create-store.js";
 /** 一级页面（与方案 4.2 对应） */
 export type PageId = "chat" | "orchestration" | "workers" | "supervisor" | "loop" | "system";
 
+/** 权限请求类型 */
+export interface PermissionRequest {
+  id: string;
+  type: "file_write" | "file_delete" | "shell_exec" | "network";
+  resource: string;
+  description?: string;
+}
+
+/** 询问请求类型 */
+export interface QuestionRequest {
+  id: string;
+  question: string;
+  options?: string[];
+  allowFreeInput?: boolean;
+  source?: string;
+}
+
 export interface UiState {
   /** 当前页面 */
   currentPage: PageId;
@@ -21,6 +38,10 @@ export interface UiState {
   selectedSupervisorId?: string;
   /** 是否显示详情页 */
   showDetail: boolean;
+  /** 当前权限请求（显示 overlay） */
+  permissionRequest?: PermissionRequest;
+  /** 当前询问请求（显示 overlay） */
+  questionRequest?: QuestionRequest;
 }
 
 const initialUiState: UiState = {
@@ -62,6 +83,34 @@ export function closeDetail(): void {
     showDetail: false,
     selectedWorkerId: undefined,
     selectedSupervisorId: undefined,
+  });
+}
+
+/** 显示权限请求 Overlay */
+export function showPermission(request: PermissionRequest): void {
+  uiStore.setState({
+    permissionRequest: request,
+  });
+}
+
+/** 关闭权限请求 */
+export function closePermission(): void {
+  uiStore.setState({
+    permissionRequest: undefined,
+  });
+}
+
+/** 显示询问请求 Overlay */
+export function showQuestion(request: QuestionRequest): void {
+  uiStore.setState({
+    questionRequest: request,
+  });
+}
+
+/** 关闭询问请求 */
+export function closeQuestion(): void {
+  uiStore.setState({
+    questionRequest: undefined,
   });
 }
 
