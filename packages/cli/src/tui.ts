@@ -204,7 +204,9 @@ async function main(): Promise<void> {
   })
 
   try {
-    if (!input.isTTY) {
+    // TUI-OT: 如果显式设置了 DEEPREEF_TUI=opentui，强制进入 TUI 模式（即使不是 TTY）
+    const forceTUI = TUI_MODE === "opentui"
+    if (!input.isTTY && !forceTUI) {
       await Promise.all([pluginReady, memoryReady])
       await runPipeMode(engine, memoryBridge)
       return
