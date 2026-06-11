@@ -38,31 +38,36 @@ function restoreTerminal(): void {
 
 /**
  * 设置键盘处理
+ * 正确用法：监听 "keypress" 事件，通过 event.sequence 获取按键字符
  */
 function setupKeyHandlers(renderer: any): void {
-  // 页面切换快捷键（1-6）
-  for (let i = 1; i <= 6; i++) {
-    const key = String(i);
-    renderer.keyInput?.on?.(key, () => {
+  renderer.keyInput?.on?.("keypress", (event: { sequence: string }) => {
+    const key = event.sequence;
+
+    // 页面切换快捷键（1-6）
+    if (key >= "1" && key <= "6") {
       const page = pageKeyMap[key];
       if (page) {
         switchPage(page);
       }
-    });
-  }
-
-  // Esc/q 关闭详情或返回
-  renderer.keyInput?.on?.("escape", () => {
-    const ui = uiStore.getState();
-    if (ui.showDetail) {
-      closeDetail();
+      return;
     }
-  });
 
-  renderer.keyInput?.on?.("q", () => {
-    const ui = uiStore.getState();
-    if (ui.showDetail) {
-      closeDetail();
+    // Esc 关闭详情或返回
+    if (key === "\x1b" || key === "\x1b\x1b") {  // ESC 或 ESC ESC
+      const ui = uiStore.getState();
+      if (ui.showDetail) {
+        closeDetail();
+      }
+      return;
+    }
+
+    // q 关闭详情或返回
+    if (key === "q" || key === "Q") {
+      const ui = uiStore.getState();
+      if (ui.showDetail) {
+        closeDetail();
+      }
     }
   });
 }
