@@ -72,6 +72,19 @@ function setupKeyHandlers(renderer: any): void {
   });
 }
 
+/**
+ * 错误边界组件 - 捕获渲染错误
+ */
+function ErrorFallback({ error }: { error: Error }) {
+  return (
+    <box style={{ flexDirection: "column", padding: 2 }}>
+      <text color="#ff5555" bold>渲染错误:</text>
+      <text color="#ffaaaa">{error.message}</text>
+      <text color="#888888" style={{ marginTop: 1 }}>按 Ctrl+C 退出</text>
+    </box>
+  );
+}
+
 export async function startOpenTUI(): Promise<void> {
   // 注册退出清理
   const cleanup = () => {
@@ -90,22 +103,29 @@ export async function startOpenTUI(): Promise<void> {
     process.exit(0);
   });
   process.once("uncaughtException", (err) => {
-    console.error("Uncaught exception:", err);
+    console.error("[OpenTUI] Uncaught exception:", err);
     cleanup();
     process.exit(1);
   });
 
   try {
+    // 显示加载提示（stderr 不会进入 alt screen）
+    console.error("[OpenTUI] 首次加载较慢，正在初始化渲染器...");
+    console.error("[OpenTUI] 加载 fixture 数据...");
+    
     // 初始化 fixture 数据
     replayEvents(sampleOrchestrationFixture);
 
+    console.error("[OpenTUI] 创建 CliRenderer（请等待 3-5 秒）...");
     // 创建 renderer（开发阶段禁用鼠标）
+    // 注意：OpenTUI 的 Zig 原生渲染器首次初始化较慢
     const cliRenderer = await createCliRenderer({
       exitOnCtrlC: true,
       targetFps: 30,
       useMouse: false,
       enableMouseMovement: false,
     });
+    console.error("[OpenTUI] 渲染器创建成功，启动界面...");
 
     const root = createRoot(cliRenderer);
 
@@ -120,18 +140,25 @@ export async function startOpenTUI(): Promise<void> {
     let currentUiState = uiStore.getState();
 
     const renderApp = () => {
-      root.render(
-        <MainLayout
-          tuiState={currentTuiState}
-          uiState={currentUiState}
-          onSwitchPage={switchPage}
-          onCloseDetail={closeDetail}
-        />
-      );
+      try {
+        root.render(
+          <MainLayout
+            tuiState={currentTuiState}
+            uiState={currentUiState}
+            onSwitchPage={switchPage}
+            onCloseDetail={closeDetail}
+          />
+        );
+      } catch (err) {
+        console.error("[OpenTUI] 渲染错误:", err);
+        root.render(<ErrorFallback error={err as Error} />);
+      }
     };
 
     // 首次渲染
+    console.error("[OpenTUI] 开始首次渲染...");
     renderApp();
+    console.error("[OpenTUI] 渲染完成，等待用户交互...");
 
     // 订阅 TuiStore 更新
     tuiStore.subscribe((newState) => {
@@ -152,6 +179,10 @@ export async function startOpenTUI(): Promise<void> {
       });
     });
 
+  } catch (err) {
+    console.error("[OpenTUI] 致命错误:", err);
+    cleanup();
+    throw err;
   } finally {
     cleanup();
   }
