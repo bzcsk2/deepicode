@@ -5,7 +5,6 @@
  * 正确用法是：createCliRenderer() + createRoot()
  */
 
-import React from "react"
 import { createCliRenderer } from "@opentui/core"
 import { createRoot } from "@opentui/react"
 import { OrchestrationDashboard } from "./components/dashboard/OrchestrationDashboard.js"
@@ -16,10 +15,6 @@ export interface OpenTUIAppProps {
 }
 
 export function OpenTUIApp(_props: OpenTUIAppProps) {
-  React.useEffect(() => {
-    replayEvents(sampleOrchestrationFixture)
-  }, [])
-
   const terminalWidth = process.stdout.columns || 120
 
   return (
@@ -36,6 +31,9 @@ export function OpenTUIApp(_props: OpenTUIAppProps) {
 }
 
 export async function startOpenTUI(options: OpenTUIAppProps = {}): Promise<void> {
+  // 在 render 之前同步重放 fixture，避免 React hook 在不兼容的 React 实例中执行
+  replayEvents(sampleOrchestrationFixture)
+
   const cliRenderer = await createCliRenderer({
     exitOnCtrlC: true,
     targetFps: 30,
