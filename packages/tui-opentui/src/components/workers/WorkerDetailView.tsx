@@ -58,24 +58,24 @@ export function WorkerDetailView({ worker, workerIndex = 0, onClose }: WorkerDet
     >
       {/* 状态行：图标 + 状态名 + 耗时 */}
       <text color={statusColor}>
-        {indicator} {worker.status} <text color={colors.fg.dim}>{elapsed}</text>
+        {indicator} {worker.status} {elapsed}
       </text>
 
       {/* 分隔线 */}
       <text color={colors.border.normal}>---</text>
 
       {/* 任务信息 */}
-      <text color={colors.fg.muted}>ID: <text color={colors.fg.secondary}>{worker.id}</text></text>
+      <text color={colors.fg.muted}>ID: {worker.id}</text>
       
       {worker.currentTask && (
         <text color={colors.fg.muted}>
-          任务: <text color={colors.fg.primary}>{worker.currentTask}</text>
+          任务: {worker.currentTask}
         </text>
       )}
 
       {worker.parentAgentId && (
         <text color={colors.fg.muted}>
-          父 Agent: <text color={colors.accent.secondary}>{worker.parentAgentId}</text>
+          父 Agent: {worker.parentAgentId}
         </text>
       )}
 

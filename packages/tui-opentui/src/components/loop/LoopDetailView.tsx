@@ -34,15 +34,14 @@ export function LoopDetailView({ loopState, onClose }: LoopDetailViewProps) {
       </text>
 
       <text color={colors.fg.muted}>
-        Attempt: <text color={colors.fg.primary}>{loopState.attempt}</text>
+        Attempt: {loopState.attempt}
       </text>
 
       {loopState.lastTransition && (
         <>
           <text color={colors.border.normal}>---</text>
           <text color={colors.fg.muted}>
-            上次转换: {loopState.lastTransition.from} -
-            <text color={colors.status.info}> {loopState.lastTransition.to}</text>
+            上次转换: {loopState.lastTransition.from} - {loopState.lastTransition.to}
           </text>
         </>
       )}

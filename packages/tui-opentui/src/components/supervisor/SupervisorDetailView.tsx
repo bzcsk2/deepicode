@@ -49,11 +49,11 @@ export function SupervisorDetailView({ supervisor, onClose }: SupervisorDetailVi
 
       <text color={colors.border.normal}>---</text>
 
-      <text color={colors.fg.muted}>ID: <text color={colors.fg.secondary}>{supervisor.id}</text></text>
+      <text color={colors.fg.muted}>ID: {supervisor.id}</text>
 
       {supervisor.reviewingWorkerId && (
         <text color={colors.fg.muted}>
-          审查 Worker: <text color={colors.accent.primary}>{supervisor.reviewingWorkerId}</text>
+          审查 Worker: {supervisor.reviewingWorkerId}
         </text>
       )}
 
