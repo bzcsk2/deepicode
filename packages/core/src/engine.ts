@@ -582,6 +582,12 @@ export class ReasonixEngine implements CoreEngine {
     this.effectivePolicy = resolveEffectiveHarnessPolicy(strictness, source)
     const harnessProfile = resolveDefaultHarness(modelName, isLocal)  // 保留兼容：部分旧组件仍读取 HarnessProfile
 
+    // ADV-HAR-03: 根据 effectivePolicy.shellPolicy 重新注册 bash 工具
+    if (this.effectivePolicy.shellPolicy === "dual-track" || this.effectivePolicy.shellPolicy === "dual-track-conservative") {
+      const { createBashTool } = await import("@deepreef/tools")
+      this.tools.set("bash", createBashTool({ dualTrack: true }))
+    }
+
     this.verificationGateState = { continuationCount: 0 }
     this.supervisorGuidanceState = createSupervisorGuidanceState()
     if (shouldCreateLedger(userInput)) {

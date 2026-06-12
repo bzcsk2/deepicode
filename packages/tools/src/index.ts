@@ -3,6 +3,19 @@ import type { AgentTool } from "@deepreef/core"
 import { ToolRegistry } from "./registry.js"
 import { createReadFileTool } from "./file-ops.js"
 import { createBashTool } from "./shell-exec.js"
+import {
+  createDualTrackBashTool,
+  classifyShellCommand,
+  pickBackgroundHardTimeout,
+  pickForegroundTimeout,
+  BackgroundTaskManager,
+  getBackgroundTaskManagerFor,
+  __resetBackgroundTaskManagers,
+  SOFT_TIMEOUT_MS,
+  HARD_TIMEOUT_DEFAULT_MS,
+  HARD_TIMEOUT_LONG_MS,
+  SHORT_TIMEOUT_MAX_MS,
+} from "./shell-dual-track/index.js"
 import { createEditTool } from "./edit.js"
 import { createWriteFileTool } from "./write-file.js"
 import { createListDirTool } from "./list-dir.js"
@@ -43,6 +56,17 @@ export {
   ToolRegistry,
   createReadFileTool,
   createBashTool,
+  createDualTrackBashTool,
+  classifyShellCommand,
+  pickBackgroundHardTimeout,
+  pickForegroundTimeout,
+  BackgroundTaskManager,
+  getBackgroundTaskManagerFor,
+  __resetBackgroundTaskManagers,
+  SOFT_TIMEOUT_MS,
+  HARD_TIMEOUT_DEFAULT_MS,
+  HARD_TIMEOUT_LONG_MS,
+  SHORT_TIMEOUT_MAX_MS,
   createEditTool,
   createWriteFileTool,
   createListDirTool,
@@ -88,11 +112,18 @@ export type { SkillDef } from "./skills/index.js"
  * CL-41: Factory function that creates the default built-in tool set.
  * Preserves construction order (matches system prompt tool spec ordering).
  * MCP dynamic tools are registered separately by the CLI/host.
+ *
+ * ADV-HAR-03: Accepts optional shellPolicy to enable dual-track bash tool.
  */
-export function createDefaultTools(skillDirs?: string[], preloadedSkills?: SkillDef[]): AgentTool[] {
+export function createDefaultTools(
+  skillDirs?: string[],
+  preloadedSkills?: SkillDef[],
+  shellPolicy?: "dual-track-conservative" | "dual-track",
+): AgentTool[] {
+  const useDualTrack = shellPolicy === "dual-track" || shellPolicy === "dual-track-conservative"
   return [
     createReadFileTool(),
-    createBashTool(),
+    createBashTool({ dualTrack: useDualTrack }),
     createEditTool(),
     createWriteFileTool(),
     createListDirTool(),
