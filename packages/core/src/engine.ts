@@ -701,6 +701,10 @@ export class ReasonixEngine implements CoreEngine {
             : this.effectivePolicy?.earlyStop === "critical-only" ? 5
             : 3,
         }),
+        // ADV-HAR-07: 传递 toolRouting 策略供 loop 使用
+        toolRouting: this.effectivePolicy?.toolRouting,
+        // ADV-HAR-08: 传递 verification 策略供 loop 使用
+        verificationPolicy: this.effectivePolicy?.verification,
         supervisorGuidance: this.effectivePolicy?.supervisorPolicy !== "off"
           ? this.buildSupervisorGuidanceConfig()
           : undefined,

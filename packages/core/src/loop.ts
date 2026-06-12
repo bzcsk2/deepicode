@@ -78,6 +78,10 @@ export interface LoopOptions {
   supervisorGuidance?: SupervisorGuidanceConfig
   /** DRF-60: 构建额外 Supervisor 触发上下文 */
   buildSupervisorExtras?: () => Partial<SupervisorTriggerContext>
+  /** ADV-HAR-07: 工具路由策略 */
+  toolRouting?: "two-stage" | "auto" | "direct"
+  /** ADV-HAR-08: 验证策略 */
+  verificationPolicy?: "block" | "require-or-waive" | "warn"
 }
 
 const DEFAULT_MAX_TURNS = 100
@@ -94,6 +98,15 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
 
   const maxTurns = maxTurnsOverride ?? DEFAULT_MAX_TURNS
   const thinkingMode = thinkingModeOverride
+
+  // TUI-FIX-10: emit initial loop_transition
+  yield {
+    role: "orchestration",
+    orchestration: {
+      kind: "loop_transition",
+      transition: { from: "observe", to: "observe", attempt: 1, timestamp: Date.now() },
+    },
+  }
 
   // CL-51: Safe-point helper — consume one pending instruction from the queue.
   const appendPendingInstruction = (): LoopEvent | null => {
@@ -150,6 +163,45 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
     )
 
     if (!outcome.statusContent) return false
+
+    // TUI-FIX-10: emit supervisor orchestration events
+    if (outcome.injected && outcome.result?.candidateId) {
+      yield {
+        role: "orchestration",
+        orchestration: {
+          kind: "supervisor_upsert",
+          supervisor: {
+            id: outcome.result.candidateId,
+            modelTarget: outcome.result.candidateId,
+            status: "idle",
+          },
+        },
+      }
+      if (outcome.result.advice) {
+        yield {
+          role: "orchestration",
+          orchestration: {
+            kind: "supervisor_advice",
+            supervisorId: outcome.result.candidateId,
+            workerId: "main",
+            advice: outcome.result.advice.diagnosis,
+            adopted: true,
+          },
+        }
+      }
+    } else if (!outcome.injected) {
+      yield {
+        role: "orchestration",
+        orchestration: {
+          kind: "supervisor_upsert",
+          supervisor: {
+            id: "supervisor",
+            modelTarget: "supervisor",
+            status: "unavailable",
+          },
+        },
+      }
+    }
 
     const evt: LoopEvent = {
       role: "status",
@@ -572,8 +624,22 @@ function* emitEarlyStopSignal(
     severity: "warning",
     metadata: { reason: signal.reason, message: signal.message, action: signal.action },
   }
+  // TUI-FIX-10: emit runtime_signal orchestration event
+  const signalKind = signal.reason === "repetition" ? "no-progress"
+    : signal.reason === "read-loop" ? "no-progress"
+    : signal.reason === "patch-spiral" ? "repeated-error"
+    : "verification-failed"
+  const orchEvent: LoopEvent = {
+    role: "orchestration",
+    orchestration: {
+      kind: "runtime_signal",
+      signal: { kind: signalKind, message: signal.message },
+    },
+  }
   ctx.log.append({ role: "user", content: signal.injection })
   sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: ctx.buildMessages() })
   yield evt
+  yield orchEvent
   sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: evt })
+  sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: orchEvent })
 }
