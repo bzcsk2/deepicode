@@ -26,6 +26,22 @@ import type { ContextPolicy } from "./context/policy.js"
 import { validateContextPolicy, mergeContextPolicy, DEFAULT_CONTEXT_POLICY } from "./context/policy.js"
 import { ContextPolicyStore } from "./context/policy-store.js"
 import type { ContextSummarizer } from "./context/summarizer.js"
+import {
+  TaskLedgerTracker,
+  shouldCreateLedger,
+  planRequestInstruction,
+} from "./task-ledger.js"
+import { resolveDefaultHarness } from "./model-profile/resolver.js"
+import { resolveHarnessStrictness, resolveEffectiveHarnessPolicy, readProjectHarnessConfig } from "./harness/index.js"
+import type { EffectiveHarnessPolicy, HarnessStrictness } from "./harness/index.js"
+import type { VerificationGateState } from "./governance/verification-gate.js"
+import {
+  createSupervisorGuidanceState,
+  SupervisorBudgetTracker,
+  loadSupervisorPool,
+  type SupervisorGuidanceConfig,
+} from "./supervisor/index.js"
+import { resolveModelTarget } from "./model-target.js"
 export type { ContextPolicy } from "./context/policy.js"
 
 export interface ContextPolicyStatus {
@@ -114,6 +130,18 @@ export class ReasonixEngine implements CoreEngine {
 
   /** QST-10: Question service for user interaction */
   private questionService: QuestionService
+
+  /** DRF-40: 当前 submit 的任务账本 */
+  private taskLedger?: TaskLedgerTracker
+  /** DRF-40: Verification Gate 计数器 */
+  private verificationGateState: VerificationGateState = { continuationCount: 0 }
+  /** DRF-60: Supervisor 指导状态（单 submit 生命周期） */
+  private supervisorGuidanceState = createSupervisorGuidanceState()
+
+  /** ADV-HAR-01: 当前会话的 Harness 严格度（可通过 /harness 切换） */
+  private sessionStrictness?: HarnessStrictness
+  /** ADV-HAR-02: 当前 submit 解析后的不可变策略（每次 submit 刷新） */
+  private effectivePolicy: EffectiveHarnessPolicy | null = null
 
   /** Get context window size */
   getContextWindow(): number {
@@ -302,6 +330,7 @@ export class ReasonixEngine implements CoreEngine {
       stats: { ...this.stats },
       currentAgent: this.currentAgent,
       isSubmitting: this.isSubmitting,
+      sessionWriter: this.sessionWriter?.getStatus(),
       timestamp: new Date().toISOString(),
     }
   }
@@ -323,6 +352,36 @@ export class ReasonixEngine implements CoreEngine {
   /** 获取当前会话启用的技能列表 */
   getActiveSkills(): Array<{ name: string; description: string; content: string }> {
     return this.activeSkills.map(skill => ({ ...skill }))
+  }
+
+  /** DRF-40: 获取当前 TaskLedger 快照（测试/调试） */
+  getTaskLedgerSnapshot() {
+    return this.taskLedger?.snapshot()
+  }
+
+  /** DRF-40: 将 TaskLedger 注入可变 scratch 上下文 */
+  private injectTaskLedgerContext(ledger?: TaskLedgerTracker, includePlanRequest = false): void {
+    if (!ledger) return
+    const formatted = ledger.formatForContext()
+    if (formatted.trim()) {
+      this.ctx.scratch.append({ role: "user", content: formatted })
+    }
+    if (includePlanRequest && ledger.plan.length === 0) {
+      this.ctx.scratch.append({ role: "user", content: planRequestInstruction() })
+    }
+  }
+
+  /** DRF-60: 构建 Supervisor 指导闭环配置 */
+  private buildSupervisorGuidanceConfig(): SupervisorGuidanceConfig {
+    const pool = loadSupervisorPool()
+    const hasEnabled = pool.candidates.some(c => c.enabled)
+    return {
+      pool,
+      budget: new SupervisorBudgetTracker(),
+      state: this.supervisorGuidanceState,
+      supervisorConfigured: hasEnabled,
+      resolveTarget: (targetId) => resolveModelTarget(targetId, this.config, this.config.modelTargets),
+    }
   }
 
   private buildActiveSkillsPrompt(): string {
@@ -459,6 +518,21 @@ export class ReasonixEngine implements CoreEngine {
     return this.currentAgent
   }
 
+  /** ADV-HAR-01: 设置会话级 Harness 严格度 */
+  setHarnessStrictness(strictness: HarnessStrictness): void {
+    this.sessionStrictness = strictness
+  }
+
+  /** ADV-HAR-01: 获取当前有效 Harness 严格度 */
+  getHarnessStrictness(): HarnessStrictness {
+    return this.effectivePolicy?.strictness ?? this.sessionStrictness ?? "normal"
+  }
+
+  /** ADV-HAR-02: 获取当前有效 Harness 策略（只读） */
+  getEffectivePolicy(): EffectiveHarnessPolicy | null {
+    return this.effectivePolicy
+  }
+
   /**
    * 获取当前引擎状态的快照，包括消息列表、流式状态、待执行工具等
    * @param isStreaming 是否正在流式输出
@@ -495,6 +569,28 @@ export class ReasonixEngine implements CoreEngine {
     this.ctx.prefix.build(systemPrompt)
 
     this.ctx.startTurn()
+
+    // ADV-HAR-02: 解析并固化本次 submit 的有效策略
+    const modelName = ac.model ?? this.config.model
+    const isLocal = this.config.provider === "openai-compatible"
+    const projectConfig = readProjectHarnessConfig()
+    const { strictness, source } = resolveHarnessStrictness({
+      sessionStrictness: this.sessionStrictness,
+      projectConfig,
+      modelName,
+    })
+    this.effectivePolicy = resolveEffectiveHarnessPolicy(strictness, source)
+    const harnessProfile = resolveDefaultHarness(modelName, isLocal)  // 保留兼容：部分旧组件仍读取 HarnessProfile
+
+    this.verificationGateState = { continuationCount: 0 }
+    this.supervisorGuidanceState = createSupervisorGuidanceState()
+    if (shouldCreateLedger(userInput)) {
+      this.taskLedger = new TaskLedgerTracker(userInput)
+      this.injectTaskLedgerContext(this.taskLedger, true)
+    } else {
+      this.taskLedger = undefined
+    }
+
     this.ctx.log.append({ role: "user", content: userInput })
     const budget = this.ctx.getBudget()
     if (budget.ratio >= this.contextPolicy.triggerRatio) {
@@ -570,6 +666,30 @@ export class ReasonixEngine implements CoreEngine {
         },
         logger: submitLogger,
         submitId,
+        taskLedger: this.taskLedger,
+        // ADV-HAR-02: 使用 effectivePolicy 而不是 harnessProfile 的字段
+        effectivePolicy: this.effectivePolicy ?? undefined,
+        maxTurns: this.effectivePolicy?.maxTurns,
+        requireVerificationBeforeFinal: (this.effectivePolicy?.verification === "block"
+          || this.effectivePolicy?.verification === "require-or-waive")
+          ?? harnessProfile.requireVerificationBeforeFinal,
+        verificationGateState: this.verificationGateState,
+        refreshLedgerContext: () => {
+          this.ctx.scratch.reset()
+          this.injectTaskLedgerContext(this.taskLedger)
+        },
+        supervisorGuidance: this.effectivePolicy?.supervisorPolicy !== "off"
+          ? this.buildSupervisorGuidanceConfig()
+          : undefined,
+        buildSupervisorExtras: () => {
+          if (!this.taskLedger) return {}
+          const failedVerifications = this.taskLedger.lastVerification?.exitCode !== 0 ? 1 : 0
+          const doneSteps = this.taskLedger.plan.filter(s => s.status === "done").length
+          return {
+            consecutiveVerificationFailures: failedVerifications,
+            ledgerStagnantRounds: doneSteps === 0 && this.taskLedger.plan.length > 0 ? 1 : 0,
+          }
+        },
       }
 
       for await (const event of runLoop(loopOpts)) {

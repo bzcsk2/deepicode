@@ -14,6 +14,25 @@ import {
   createDuplicateDetector,
   injectPendingInstruction,
 } from "./loop-helpers.js"
+import { EarlyStopDetector } from "./early-stop.js"
+import type { StopSignal } from "./early-stop.js"
+import { salvageTextToolCallsInResponse, TextToolCallStreamFilter } from "./tool-calls/text-salvage.js"
+import type { TaskLedgerTracker } from "./task-ledger.js"
+import {
+  evaluateVerificationGate,
+  maybeResetVerificationGateCounter,
+  type VerificationGateState,
+} from "./governance/verification-gate.js"
+import { parseToolCallArgs } from "./executor-helpers.js"
+import type { SupervisorGuidanceConfig } from "./supervisor/guided-loop.js"
+import {
+  buildSupervisorTriggerContext,
+  recordSupervisorFailureEvidence,
+  recordSupervisorToolEvidence,
+  runSupervisorGuidanceAtSafePoint,
+} from "./supervisor/guided-loop.js"
+import type { SupervisorTriggerContext } from "./supervisor/types.js"
+import type { EffectiveHarnessPolicy } from "./harness/index.js"
 
 export interface PendingInstruction {
   content: string
@@ -43,12 +62,34 @@ export interface LoopOptions {
   thinkingMode?: ThinkingMode
   logger?: RuntimeLogger
   submitId?: string
+  /** ADV-HAR-02: 当前 submit 的有效 Harness 策略 */
+  effectivePolicy?: EffectiveHarnessPolicy
+  /** DRF-20: 早停检测器 */
+  earlyStop?: EarlyStopDetector
+  /** DRF-40: 任务账本 */
+  taskLedger?: TaskLedgerTracker
+  /** DRF-40: 完成前是否要求验证 */
+  requireVerificationBeforeFinal?: boolean
+  /** DRF-40: Verification Gate 计数器 */
+  verificationGateState?: VerificationGateState
+  /** DRF-40: ledger 更新后刷新可变上下文 */
+  refreshLedgerContext?: () => void
+  /** DRF-60: Supervisor 指导回注配置 */
+  supervisorGuidance?: SupervisorGuidanceConfig
+  /** DRF-60: 构建额外 Supervisor 触发上下文 */
+  buildSupervisorExtras?: () => Partial<SupervisorTriggerContext>
 }
 
 const DEFAULT_MAX_TURNS = 100
 
 export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
-  const { ctx, client, toolExecutor, toolSpecs, config, signal, sessionWriter, stats, isInterrupted, appendToolResult, takePendingInstruction, maxTurns: maxTurnsOverride, thinkingMode: thinkingModeOverride = "off", logger = noopRuntimeLogger, submitId } = opts
+  const {
+    ctx, client, toolExecutor, toolSpecs, config, signal, sessionWriter, stats, isInterrupted,
+    appendToolResult, takePendingInstruction, maxTurns: maxTurnsOverride,
+    thinkingMode: thinkingModeOverride = "off", logger = noopRuntimeLogger, submitId, earlyStop,
+    taskLedger, requireVerificationBeforeFinal = false, verificationGateState,
+    refreshLedgerContext, supervisorGuidance, buildSupervisorExtras,
+  } = opts
   const diagnosticsEnabled = logger.isEnabled("error")
 
   const maxTurns = maxTurnsOverride ?? DEFAULT_MAX_TURNS
@@ -74,8 +115,103 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
   const recentToolCalls = createDuplicateDetector()
   let totalToolCalls = 0
 
+  /** DRF-40: 记录工具结果到 TaskLedger */
+  const recordLedgerTool = (toolName: string, args: Record<string, unknown>, result: ToolResult): void => {
+    if (!taskLedger) return
+    const pendingBefore = taskLedger.verificationPending
+    taskLedger.recordToolResult(toolName, args, result)
+    refreshLedgerContext?.()
+    if (verificationGateState) {
+      const blockingAfter = taskLedger.verificationPending && taskLedger.changedFiles.length > 0
+      maybeResetVerificationGateCounter(
+        verificationGateState,
+        pendingBefore,
+        taskLedger.verificationPending,
+        blockingAfter && requireVerificationBeforeFinal,
+      )
+    }
+  }
+
+  /** DRF-60: 在安全点请求 Supervisor 指导并注入 scratch */
+  const trySupervisorGuidance = async function* (): AsyncGenerator<LoopEvent, boolean> {
+    if (!supervisorGuidance || !taskLedger) return false
+
+    const extras = buildSupervisorExtras?.() ?? {}
+    const triggerCtx = buildSupervisorTriggerContext(supervisorGuidance.state, {
+      supervisorConfigured: supervisorGuidance.supervisorConfigured ?? true,
+      ...extras,
+    })
+
+    const outcome = await runSupervisorGuidanceAtSafePoint(
+      supervisorGuidance,
+      triggerCtx,
+      taskLedger.snapshot(),
+      ctx,
+    )
+
+    if (!outcome.statusContent) return false
+
+    const evt: LoopEvent = {
+      role: "status",
+      content: outcome.statusContent,
+      severity: outcome.injected ? "info" : "warning",
+      metadata: outcome.statusMetadata,
+    }
+    yield evt
+    sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: evt })
+
+    if (outcome.injected) {
+      sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: ctx.buildMessages() })
+      return true
+    }
+
+    if (outcome.degradedMessage) {
+      const degradeEvt: LoopEvent = {
+        role: "status",
+        content: outcome.degradedMessage,
+        severity: "warning",
+        metadata: { supervisorDegraded: true },
+      }
+      yield degradeEvt
+      sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: degradeEvt })
+    }
+    return false
+  }
+
+  /** DRF-40: 尝试拦截 done 并注入验证提示 */
+  const tryVerificationGate = function* (): Generator<LoopEvent, boolean> {
+    if (!taskLedger || !requireVerificationBeforeFinal) return false
+    const gateState = verificationGateState ?? { continuationCount: 0 }
+    const decision = evaluateVerificationGate(
+      taskLedger.snapshot(),
+      requireVerificationBeforeFinal,
+      gateState,
+    )
+    if (!decision.blocking) return false
+
+    gateState.continuationCount++
+    ctx.log.append({ role: "user", content: decision.prompt })
+    sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: ctx.buildMessages() })
+
+    const evt: LoopEvent = {
+      role: "status",
+      content: "verification_gate",
+      severity: "warning",
+      metadata: {
+        verificationPending: taskLedger.verificationPending,
+        changedFiles: taskLedger.changedFiles.length,
+        continuationCount: gateState.continuationCount,
+        requiresUser: decision.requiresUser,
+      },
+    }
+    yield evt
+    sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: evt })
+    return true
+  }
+
   while (turnCount < maxTurns) {
     turnCount++
+    earlyStop?.newTurn()
     if (diagnosticsEnabled) logger.debug("loop.turn.start", { turnCount, thinkingMode })
     resetToolCallSeq()  // Reset per-turn sequence for ID normalization
     if (isInterrupted()) {
@@ -88,6 +224,7 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
     const toolCalls: ToolCall[] = []
     let streamError: LoopEvent | null = null
     let finishedWithToolUse = false
+    const textToolCallFilter = new TextToolCallStreamFilter()
 
     const provider = config.provider ?? ""
     const isKeyless = provider === "kilo" || provider === "openai-compatible"
@@ -112,11 +249,21 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
       }
 
       switch (event.type) {
-        case "text_delta":
+        case "text_delta": {
           fullContent += event.delta
-          yield { role: "assistant_delta", content: event.delta }
-          sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: { role: "assistant_delta", content: event.delta } })
+          const visibleDelta = textToolCallFilter.feed(event.delta)
+          if (visibleDelta) {
+            yield { role: "assistant_delta", content: visibleDelta }
+            sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: { role: "assistant_delta", content: visibleDelta } })
+          }
+          if (earlyStop) {
+            const repSignal = earlyStop.checkRepetition(fullContent)
+            if (repSignal) {
+              yield* emitEarlyStopSignal(repSignal, ctx, sessionWriter, supervisorGuidance?.state)
+            }
+          }
           break
+        }
 
         case "status":
           yield { role: "status", content: event.content, metadata: event.metadata }
@@ -202,6 +349,49 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
                 if (toolEvent.role !== 'tool_progress') {
                   sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: toolEvent })
                 }
+                // DRF-40: 记录工具结果到 TaskLedger
+                if (taskLedger && (toolEvent.role === "tool" || toolEvent.role === "error") && toolEvent.toolName) {
+                  const tc = toolCalls.find(t => t.function.name === toolEvent.toolName)
+                  if (tc) {
+                    const argsResult = parseToolCallArgs(tc.function.arguments, tc.function.name)
+                    if (argsResult.ok) {
+                      const isErr = toolEvent.role === "error" || !!toolEvent.metadata?.error
+                      recordLedgerTool(toolEvent.toolName, argsResult.args, {
+                        isError: isErr,
+                        content: toolEvent.content ?? "",
+                        metadata: toolEvent.metadata,
+                      })
+                      if (supervisorGuidance) {
+                        recordSupervisorToolEvidence(
+                          supervisorGuidance.state,
+                          toolEvent.toolName,
+                          !isErr,
+                          (toolEvent.content ?? "").slice(0, 200),
+                        )
+                        if (isErr) {
+                          const sigKey = typeof argsResult.args.path === "string"
+                            ? argsResult.args.path
+                            : typeof argsResult.args.command === "string"
+                              ? argsResult.args.command
+                              : "err"
+                          recordSupervisorFailureEvidence(
+                            supervisorGuidance.state,
+                            `${toolEvent.toolName}:${sigKey}`,
+                            toolEvent.content,
+                          )
+                        }
+                      }
+                    }
+                  }
+                }
+                // DRF-20: 早停信号检测
+                if (earlyStop && (toolEvent.role === "tool" || toolEvent.role === "error") && toolEvent.toolName) {
+                  const toolSignal = earlyStop.recordReadTool(toolEvent.toolName)
+                  if (toolSignal) yield* emitEarlyStopSignal(toolSignal, ctx, sessionWriter, supervisorGuidance?.state)
+                  if (!toolEvent.metadata?.error && ["write_file", "edit", "NotebookEdit", "bash"].includes(toolEvent.toolName)) {
+                    earlyStop.recordWriteTool(toolEvent.toolName)
+                  }
+                }
               }
               // persist messages with tool results for crash recovery
               sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: ctx.buildMessages() })
@@ -212,6 +402,12 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
             yield { role: "status", content: "tools_completed" }
             sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: { role: "status", content: "tools_completed" } })
 
+            // DRF-60: Safe point — Supervisor 指导（暂停工具环后继续 Worker）
+            const supervisorInjected = yield* trySupervisorGuidance()
+            if (supervisorInjected) {
+              break
+            }
+
             // P2: Safe point 1 — consume one pending instruction after tool batch
             const injectedAfterTools = appendPendingInstruction()
             if (injectedAfterTools) {
@@ -220,6 +416,90 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
           } else if (finishedWithToolUse) {
             // defensive: second done after tool use
           } else {
+            const filterTail = textToolCallFilter.flush()
+            if (filterTail) {
+              yield { role: "assistant_delta", content: filterTail }
+              sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: { role: "assistant_delta", content: filterTail } })
+            }
+
+            // DRF-31: stop 且无原生 tool_calls 时，抢救正文中的嵌入工具调用
+            if (reason === "stop" && toolCalls.length === 0 && fullContent.trim()) {
+              const salvaged = salvageTextToolCallsInResponse({
+                content: fullContent,
+                finishReason: reason,
+                toolCalls: [],
+              })
+              if (salvaged.toolCalls?.length) {
+                const salvagedCalls = salvaged.toolCalls
+                const cleanContent = salvaged.content || ""
+                ctx.log.append({
+                  role: "assistant",
+                  content: cleanContent || null,
+                  reasoning_content: fullReasoning || undefined,
+                  tool_calls: salvagedCalls,
+                })
+                sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: ctx.buildMessages() })
+                totalToolCalls += salvagedCalls.length
+
+                try {
+                  for await (const toolEvent of toolExecutor.run(salvagedCalls, signal, appendToolResult, diagnosticsEnabled ? { submitId, turnCount } : undefined)) {
+                    yield toolEvent
+                    if (toolEvent.role !== "tool_progress") {
+                      sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: toolEvent })
+                    }
+                    if (taskLedger && (toolEvent.role === "tool" || toolEvent.role === "error") && toolEvent.toolName) {
+                      const tc = salvagedCalls.find(t => t.function.name === toolEvent.toolName)
+                      if (tc) {
+                        const argsResult = parseToolCallArgs(tc.function.arguments, tc.function.name)
+                        if (argsResult.ok) {
+                          recordLedgerTool(toolEvent.toolName, argsResult.args, {
+                            isError: toolEvent.role === "error" || !!toolEvent.metadata?.error,
+                            content: toolEvent.content ?? "",
+                            metadata: toolEvent.metadata,
+                          })
+                        }
+                      }
+                    }
+                    if (earlyStop && (toolEvent.role === "tool" || toolEvent.role === "error") && toolEvent.toolName) {
+                      const toolSignal = earlyStop.recordReadTool(toolEvent.toolName)
+                      if (toolSignal) yield* emitEarlyStopSignal(toolSignal, ctx, sessionWriter, supervisorGuidance?.state)
+                      if (!toolEvent.metadata?.error && ["write_file", "edit", "NotebookEdit", "bash"].includes(toolEvent.toolName)) {
+                        earlyStop.recordWriteTool(toolEvent.toolName)
+                      }
+                    }
+                  }
+                  sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: ctx.buildMessages() })
+                } catch {
+                  // StreamingToolExecutor handles settling remaining tools internally
+                }
+                yield { role: "status", content: "tools_completed" }
+                sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: { role: "status", content: "tools_completed" } })
+
+                const injectedAfterSalvage = appendPendingInstruction()
+                if (injectedAfterSalvage) {
+                  yield injectedAfterSalvage
+                }
+                break
+              }
+            }
+
+            if (earlyStop) {
+              const greetSignal = earlyStop.checkGreeting(fullContent, totalToolCalls > 0)
+              if (greetSignal) yield* emitEarlyStopSignal(greetSignal, ctx, sessionWriter, supervisorGuidance?.state)
+            }
+
+            // DRF-40: 尝试从模型响应提取计划
+            if (taskLedger && fullContent.trim()) {
+              if (taskLedger.ingestPlanFromText(fullContent)) {
+                refreshLedgerContext?.()
+                yield {
+                  role: "status",
+                  content: "task_ledger_plan",
+                  metadata: { stepCount: taskLedger.plan.length },
+                }
+              }
+            }
+
             ctx.log.append({ role: "assistant", content: fullContent })
 
             // P2: Safe point 2 — check for pending instructions before ending turn
@@ -227,6 +507,12 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
             if (injectedBeforeDone) {
               yield injectedBeforeDone
               // Don't yield done — continue the loop to process the injected instruction
+              break
+            }
+
+            // DRF-40: Verification Gate — 拦截未验证的 done
+            const gated = yield* tryVerificationGate()
+            if (gated) {
               break
             }
 
@@ -268,4 +554,26 @@ export async function* runLoop(opts: LoopOptions): AsyncGenerator<LoopEvent> {
   if (diagnosticsEnabled) logger.warn("loop.max_turns", { maxTurns })
   yield { role: "warning", content: `Reached maximum tool loop count (${maxTurns}).`, severity: "warning" as const }
   yield { role: "done", metadata: { reason: "maxTurns" } }
+}
+
+/** 注入早停纠正信号到上下文 */
+function* emitEarlyStopSignal(
+  signal: StopSignal,
+  ctx: ContextManager,
+  sessionWriter?: AsyncSessionWriter,
+  supervisorState?: SupervisorGuidanceConfig["state"],
+): Generator<LoopEvent> {
+  if (supervisorState) {
+    supervisorState.lastStopSignalReason = signal.reason
+  }
+  const evt: LoopEvent = {
+    role: "status",
+    content: "early_stop",
+    severity: "warning",
+    metadata: { reason: signal.reason, message: signal.message, action: signal.action },
+  }
+  ctx.log.append({ role: "user", content: signal.injection })
+  sessionWriter?.enqueue({ ts: Date.now(), type: "messages", payload: ctx.buildMessages() })
+  yield evt
+  sessionWriter?.enqueue({ ts: Date.now(), type: "event", payload: evt })
 }

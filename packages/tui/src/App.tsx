@@ -443,6 +443,7 @@ export function App({ engine, config, pluginCount = 0, contentPackCount = 0, ass
       if (command.subcommand === 'strict' || command.subcommand === 'normal' || command.subcommand === 'loose') {
         setHarnessStrictness(command.subcommand);
         setHarnessSource('session');
+        engineRef.current.setHarnessStrictness(command.subcommand);
         appendMessage({
           role: 'assistant' as const,
           content: `Harness strictness set to: ${command.subcommand} (session)\nApplies from: next submission`,
@@ -462,6 +463,7 @@ export function App({ engine, config, pluginCount = 0, contentPackCount = 0, ass
         writeProjectHarnessConfig({ strictness: val });
         setHarnessStrictness(val);
         setHarnessSource('project');
+        engineRef.current.setHarnessStrictness(val);
         appendMessage({
           role: 'assistant' as const,
           content: `Project default harness strictness set to: ${val}`,
@@ -683,6 +685,7 @@ export function App({ engine, config, pluginCount = 0, contentPackCount = 0, ass
           const strictness = value as 'strict' | 'normal' | 'loose';
           setHarnessStrictness(strictness);
           setHarnessSource('session');
+          engineRef.current.setHarnessStrictness(strictness);
           setShowHarnessMenu(false);
           appendMessage({
             role: 'assistant' as const,

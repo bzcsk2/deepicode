@@ -694,3 +694,56 @@ describe("LIFE-01: Engine shutdown", () => {
     // but the test passing without hanging implies cleanup happened.
   })
 })
+
+describe("ADV-HAR-02: EffectiveHarnessPolicy integration", () => {
+  it("resolves effective policy during submit", async () => {
+    mockClient.setGenerators([
+      (async function* () {
+        yield { type: "text_delta", delta: "ok" }
+        yield { type: "usage", usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }
+        yield { type: "done", finishReason: "stop" }
+      })(),
+    ])
+
+    const engine = makeEngine()
+    const events: LoopEvent[] = []
+    for await (const e of engine.submit("test")) events.push(e)
+
+    const policy = engine.getEffectivePolicy()
+    expect(policy).not.toBeNull()
+    expect(policy!.strictness).toBe("normal") // default for unknown remote model
+    expect(policy!.source).toBe("default")
+    expect(policy!.executionMode).toBe("adaptive")
+  })
+
+  it("uses session strictness when set", async () => {
+    mockClient.setGenerators([
+      (async function* () {
+        yield { type: "text_delta", delta: "ok" }
+        yield { type: "usage", usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }
+        yield { type: "done", finishReason: "stop" }
+      })(),
+    ])
+
+    const engine = makeEngine()
+    engine.setHarnessStrictness("strict")
+
+    const events: LoopEvent[] = []
+    for await (const e of engine.submit("test")) events.push(e)
+
+    const policy = engine.getEffectivePolicy()
+    expect(policy).not.toBeNull()
+    expect(policy!.strictness).toBe("strict")
+    expect(policy!.source).toBe("session")
+    expect(policy!.executionMode).toBe("forced")
+    expect(policy!.readBeforeWrite).toBe("block")
+  })
+
+  it("getHarnessStrictness returns current strictness", () => {
+    const engine = makeEngine()
+    expect(engine.getHarnessStrictness()).toBe("normal")
+
+    engine.setHarnessStrictness("loose")
+    expect(engine.getHarnessStrictness()).toBe("loose")
+  })
+})
