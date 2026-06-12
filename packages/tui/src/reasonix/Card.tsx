@@ -12,9 +12,23 @@
  */
 import { Box } from '@deepreef/ink';
 import React from 'react';
+import { SURFACE } from './tokens.js';
 
 export interface CardProps { tone?: string; children: React.ReactNode; }
 
 export function Card({ children }: CardProps): React.ReactElement {
-  return <Box flexDirection="column" marginTop={1} width="100%">{children}</Box>;
+  return (
+    <Box flexDirection="column" marginTop={1} width="100%">
+      {children}
+    </Box>
+  );
+}
+
+/** PanelCard — 面板风格的卡片容器，带深色背景 */
+export function PanelCard({ children }: CardProps): React.ReactElement {
+  return (
+    <Box flexDirection="column" width="100%" backgroundColor={SURFACE.bgElev}>
+      {children}
+    </Box>
+  );
 }

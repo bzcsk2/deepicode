@@ -17,30 +17,30 @@ export interface ThemeTokens {
 }
 
 /**
- * 深色主题颜色定义。
+ * 深色主题颜色定义 — new_tui 风格。
  * 所有组件通过 FG / TONE / SURFACE 代理引用此处色值，修改此对象即可全局换肤。
  *
- * 配色思路：黑色画布（bg: #000）、绿色活动色（brand/ok: #00FF66）、蓝色命令面（bgInput: #1D3B5C）。
- * - fg.strong    (#ffffff) 标题/高亮文字
- * - fg.body      (#E1D3DC) 正文字体色
- * - fg.sub       (#8D7B88) 次要文字
- * - fg.meta      (#8D7B88) 元数据标签（与 sub 同色）
- * - fg.faint     (#5D5159) 最淡文字（占位符、次要标记）
- * - tone.brand   (#00FF66) 品牌绿：StreamingCard 头部、成功状态
- * - tone.accent  (#4A90E2) 品牌蓝：强调色、信息标记
- * - tone.ok      (#00FF66) 成功色：ToolCard 勾选图标
- * - tone.warn    (#FFBD2E) 警告色：横幅警告、待定状态
- * - tone.err     (#FF5F56) 错误色：失败图标、错误横幅
- * - tone.info    (#4A90E2) 信息色：通用信息标记
- * - surface.bg      (#000000) 终端大背景
- * - surface.bgInput (#653a99be) 输入框背景（带 alpha 通道的紫色）
- * - surface.bgCode  (#0C0C0C) 代码块背景（比主背景略亮）
- * - surface.bgElev  (#13283F) 卡片/弹窗背景（浮起层级）
+ * 配色思路：暗色画布（bg: #050505）、蓝紫强调色（brand/accent: #3b82f6/#a855f7）、琥珀警告色（warn: #f59e0b）。
+ * - fg.strong    (#e0e0e0) 标题/高亮文字
+ * - fg.body      (#85a9ff) 正文（终端蓝调）
+ * - fg.sub       (#9ca3af) 次要文字（gray-400）
+ * - fg.meta      (#6b7280) 元数据标签（gray-500）
+ * - fg.faint     (#4b5563) 最淡文字（gray-600）
+ * - tone.brand   (#3b82f6) 品牌蓝：StreamingCard 头部、主角色
+ * - tone.accent  (#a855f7) 品牌紫：强调色、活动状态
+ * - tone.ok      (#00ff41) 成功绿：完成状态
+ * - tone.warn    (#f59e0b) 警告琥珀：待定状态
+ * - tone.err     (#ef4444) 错误红：失败状态
+ * - tone.info    (#3b82f6) 信息蓝
+ * - surface.bg      (#050505) 终端大背景
+ * - surface.bgInput (#0c0c0c) 输入框/卡片背景
+ * - surface.bgCode  (#0c0c0c) 代码块背景
+ * - surface.bgElev  (#0a0a0a) 面板/弹窗背景
  */
 const dark: ThemeTokens = {
-  fg: { strong: '#ffffff', body: '#E1D3DC', sub: '#8D7B88', meta: '#8D7B88', faint: '#5D5159' },
-  tone: { brand: '#00FF66', accent: '#4A90E2', ok: '#00FF66', warn: '#FFBD2E', err: '#FF5F56', info: '#4A90E2' },
-  surface: { bg: '#000000', bgInput: '#653a99be', bgCode: '#0C0C0C', bgElev: '#13283F' },
+  fg: { strong: '#e0e0e0', body: '#85a9ff', sub: '#9ca3af', meta: '#6b7280', faint: '#4b5563' },
+  tone: { brand: '#3b82f6', accent: '#a855f7', ok: '#00ff41', warn: '#f59e0b', err: '#ef4444', info: '#3b82f6' },
+  surface: { bg: '#050505', bgInput: '#0c0c0c', bgCode: '#0c0c0c', bgElev: '#0a0a0a' },
 };
 
 // 仅在运行时需要切换主题时使用（例如用户设置偏好），当前始终使用 dark。
