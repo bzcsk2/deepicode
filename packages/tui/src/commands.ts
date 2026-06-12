@@ -16,6 +16,7 @@ export type SlashCommand =
   | { name: "lang" }
   | { name: "status" }
   | { name: "context" }
+  | { name: "harness"; subcommand?: "status" | "strict" | "normal" | "loose" | "project"; arg?: string }
 
 const THINKING_MODES = ["off", "open", "high"]
 
@@ -41,6 +42,18 @@ export function parseSlashCommand(text: string): SlashCommand | null {
     const parts = trimmed.split(/\s+/)
     const mode = parts[1]
     return { name: "thinking", mode: mode ?? "" }
+  }
+
+  if (trimmed.startsWith("/harness")) {
+    const parts = trimmed.split(/\s+/)
+    const sub = parts[1]
+    if (sub === "status" || sub === "strict" || sub === "normal" || sub === "loose") {
+      return { name: "harness" as const, subcommand: sub as "status" | "strict" | "normal" | "loose" }
+    }
+    if (sub === "project") {
+      return { name: "harness" as const, subcommand: "project" as const, arg: parts[2] }
+    }
+    return { name: "harness" as const }
   }
 
   return null

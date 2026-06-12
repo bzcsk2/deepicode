@@ -5,6 +5,7 @@ import { writeSync } from 'node:fs';
 import type { ReasonixEngine } from '@deepreef/core';
 import type { ChatMessage, DeepreefConfig } from '@deepreef/core';
 import { PROVIDERS, AGENTS, defaultAgentRegistry, getModelContextWindow, saveLastConfig } from '@deepreef/core';
+import { resolveHarnessStrictness, readProjectHarnessConfig, writeProjectHarnessConfig } from '@deepreef/core';
 import { createBridge, timelineFromMessages, type BridgeState } from './bridge.js';
 import { TranscriptProvider } from './store/TranscriptContext.js';
 import { BridgeRuntimeProvider } from './store/BridgeRuntimeContext.js';
@@ -305,7 +306,19 @@ export function App({ engine, config, pluginCount = 0, contentPackCount = 0, ass
   const [showThinkingMenu, setShowThinkingMenu] = useState(false);               // 是否显示推理档位选择菜单覆盖层
   const [showSkillModal, setShowSkillModal] = useState(false);                   // 是否显示技能管理弹窗覆盖层
   const [showContextModal, setShowContextModal] = useState(false);               // 是否显示上下文策略管理弹窗覆盖层
+  const [showHarnessMenu, setShowHarnessMenu] = useState(false);                 // 是否显示 Harness 严格度选择菜单
   const [showSearch, setShowSearch] = useState(false);                           // 是否显示搜索覆盖层（Ctrl+F 触发）
+  // ADV-HAR-01: Harness 三档严格度状态
+  const initialStrictness = useMemo(() => {
+    const projectConfig = readProjectHarnessConfig();
+    const resolved = resolveHarnessStrictness({
+      projectConfig,
+      modelName: config.model,
+    });
+    return resolved;
+  }, [config.model]);
+  const [harnessStrictness, setHarnessStrictness] = useState<'strict' | 'normal' | 'loose'>(initialStrictness.strictness);
+  const [harnessSource, setHarnessSource] = useState(initialStrictness.source);
   const modalBlocksScroll = showSearch
     || showModelPicker
     || showSessionPicker
@@ -314,6 +327,7 @@ export function App({ engine, config, pluginCount = 0, contentPackCount = 0, ass
     || showThinkingMenu
     || showSkillModal
     || showContextModal
+    || showHarnessMenu
     || showAutocomplete;
   useMessageScroll(scrollRef, !modalBlocksScroll);
   const [activeAgent, setActiveAgent] = useState(persistedAgent ?? engine.getAgentName?.() ?? 'build'); // 当前 Agent 名称
@@ -416,6 +430,45 @@ export function App({ engine, config, pluginCount = 0, contentPackCount = 0, ass
     }
     if (command?.name === 'lang') {
       setShowLangMenu(true);
+      return;
+    }
+    if (command?.name === 'harness') {
+      if (command.subcommand === 'status') {
+        appendMessage({
+          role: 'assistant' as const,
+          content: `Harness strictness: ${harnessStrictness}\nSource: ${harnessSource}`,
+        });
+        return;
+      }
+      if (command.subcommand === 'strict' || command.subcommand === 'normal' || command.subcommand === 'loose') {
+        setHarnessStrictness(command.subcommand);
+        setHarnessSource('session');
+        appendMessage({
+          role: 'assistant' as const,
+          content: `Harness strictness set to: ${command.subcommand} (session)\nApplies from: next submission`,
+        });
+        return;
+      }
+      if (command.subcommand === 'project') {
+        const valid: Array<'strict' | 'normal' | 'loose'> = ['strict', 'normal', 'loose']
+        const val = command.arg as 'strict' | 'normal' | 'loose' | undefined
+        if (!val || !valid.includes(val)) {
+          appendMessage({
+            role: 'assistant' as const,
+            content: 'Usage: /harness project <strict|normal|loose>',
+          });
+          return;
+        }
+        writeProjectHarnessConfig({ strictness: val });
+        setHarnessStrictness(val);
+        setHarnessSource('project');
+        appendMessage({
+          role: 'assistant' as const,
+          content: `Project default harness strictness set to: ${val}`,
+        });
+        return;
+      }
+      setShowHarnessMenu(true);
       return;
     }
     const taggedSkillNames = extractSkillTags(submitted);
@@ -611,6 +664,33 @@ export function App({ engine, config, pluginCount = 0, contentPackCount = 0, ass
         ]}
         onChoose={handleThinkingChoose}
         onCancel={() => setShowThinkingMenu(false)}
+      />
+    );
+  }
+
+  // ---- 覆盖层：Harness 严格度选择菜单（当 showHarnessMenu 为 true 时显示） ----
+  if (showHarnessMenu) {
+    return (
+      <ChoiceMenu
+        title="Harness strictness"
+        subtitle={`Current: ${harnessStrictness} (${harnessSource})\nApplies from: next submission`}
+        items={[
+          { value: "strict", label: "strict", description: "强约束，适合本地小模型和不稳定工具调用" },
+          { value: "normal", label: "normal", description: "默认，在可靠性与自主执行之间平衡" },
+          { value: "loose", label: "loose", description: "少干预，保留权限、安全和真实性底线" },
+        ]}
+        onChoose={(value) => {
+          const strictness = value as 'strict' | 'normal' | 'loose';
+          setHarnessStrictness(strictness);
+          setHarnessSource('session');
+          setShowHarnessMenu(false);
+          appendMessage({
+            role: 'assistant' as const,
+            content: `Harness strictness set to: ${strictness} (session)\nApplies from: next submission`,
+          });
+        }}
+        onCancel={() => setShowHarnessMenu(false)}
+        footer="设为项目默认: /harness project <strict|normal|loose>"
       />
     );
   }
