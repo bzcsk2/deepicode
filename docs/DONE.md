@@ -2938,3 +2938,87 @@ bun run packages/core/scripts/benchmark-matrix.ts
 - `bun run typecheck` — 通过（0 错误）
 - `bun test packages/tui/__tests__/` — **86 pass / 0 fail**（69 原测试 + 17 新增 OrchestrationStore 测试）
 - `git diff --check` — 通过（0 空白符问题）
+
+---
+
+## 42. ADV-HAR：Harness 严格度分档与 Engine 接线（2026-06-12）
+
+基于 ADVICE.md ADV-HAR-01～08 任务，实现三档 Harness 严格度体系并在 Engine 中集中接线。
+
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| ADV-HAR-01 | ✅ 已完成 | `HarnessStrictness` 类型 + `EffectiveHarnessPolicy` + 优先级解析器 + `/harness` TUI 菜单 |
+| ADV-HAR-02 | ✅ 已完成 | `Engine.submit()` 入口固化策略，传递 `effectivePolicy` 到 `LoopOptions` |
+| ADV-HAR-03 | ✅ 已完成 | 根据 `shellPolicy` 自动启用 dual-track bash 工具 |
+| ADV-HAR-04 | ✅ 已完成 | Supervisor 池默认空，用户必须显式配置 `.deepreef/supervisor-pool.json` |
+| ADV-HAR-05 | ✅ 已完成 | `ReadTracker` 按 `readBeforeWrite` 策略分级（block/warn/off） |
+| ADV-HAR-06 | ✅ 已完成 | `EarlyStopDetector` 按 `earlyStop` 策略分级（aggressive/standard/critical-only） |
+| ADV-HAR-07 | ✅ 已完成 | `toolRouting` 策略传入 LoopOptions |
+| ADV-HAR-08 | ✅ 已完成 | `verificationPolicy` 策略传入 LoopOptions |
+
+### 42.1 ADV-HAR-01：严格度解析器
+
+**新增文件：**
+- `packages/core/src/harness/strictness.ts` — `resolveHarnessStrictness()`、`readProjectHarnessConfig()`、`resolveDefaultStrictness()`
+- `packages/core/src/harness/policy.ts` — `resolveEffectiveHarnessPolicy()`、`getBasePolicy()`
+- `packages/core/src/harness/config.ts` — 读写 `.deepreef/harness.json`
+
+**修改文件：**
+- `packages/core/src/model-profile/types.ts` — 新增 `HarnessStrictness`、`EffectiveHarnessPolicy`、`ProjectHarnessConfig` 类型
+- `packages/tui/src/App.tsx` — `/harness` 命令（显示当前策略/设置严格度）
+- `packages/tui/src/commands.ts` — `/harness` 命令解析
+- `packages/tui/src/CommandRegistry.ts` — `/harness` 自动补全
+
+**优先级链：** session > project.modelOverrides[global] > project.global > model-profile.default
+
+### 42.2 ADV-HAR-02：Engine 接线
+
+**修改文件：**
+- `packages/core/src/engine.ts` — `submit()` 入口调用 `resolveEffectiveHarnessPolicy()`，存储为 `this.effectivePolicy`，传递到 `LoopOptions`
+- `packages/core/src/loop.ts` — `LoopOptions` 新增 `effectivePolicy` 字段
+
+### 42.3 ADV-HAR-03：Shell 双轨
+
+**修改文件：**
+- `packages/core/src/engine.ts` — 根据 `effectivePolicy.shellPolicy` 决定是否传递 `shellTool` 到 `createDefaultTools`
+- `packages/tools/src/index.ts` — `createDefaultTools()` 接受可选 `shellTool` 参数
+
+### 42.4 ADV-HAR-04：Supervisor 池
+
+**修改文件：**
+- `packages/core/src/supervisor/pool.ts` — `loadSupervisorPool()` 无配置文件时返回空对象（不加载默认候选）
+
+### 42.5 ADV-HAR-05：Read Before Write
+
+**修改文件：**
+- `packages/core/src/engine.ts` — 根据 `effectivePolicy.readBeforeWrite` 策略实例化 `ReadTracker`
+
+### 42.6 ADV-HAR-06：Early Stop 联动
+
+**修改文件：**
+- `packages/core/src/engine.ts` — 根据 `effectivePolicy.earlyStop` 配置 `EarlyStopDetector.repetitionThreshold`（aggressive=2, standard=3, critical-only=5）
+
+### 42.7 ADV-HAR-07/08：Tool Routing 与 Verification Gate
+
+**修改文件：**
+- `packages/core/src/loop.ts` — `LoopOptions` 新增 `toolRouting` 和 `verificationPolicy` 字段
+- `packages/core/src/engine.ts` — 传递这两个策略到 loop
+
+### 42.8 三档策略映射
+
+| 策略 | strict | normal | loose |
+|------|--------|--------|-------|
+| shellPolicy | off | dual-track | dual-track |
+| readBeforeWrite | block | warn | off |
+| earlyStop | aggressive | standard | critical-only |
+| toolRouting | two-stage | auto | direct |
+| verification | block | require-or-waive | warn |
+| supervisorPolicy | guided | on | off |
+| approval | full-auto | full-auto | ask-before |
+
+### 42.9 验收
+
+- `bun run typecheck` — 通过（0 错误）
+- `bun test packages/core/__tests__/harness-strictness.test.ts` — **19 pass / 0 fail**
+- `bun test packages/core/__tests__/engine-tools.test.ts` — **29 pass / 0 fail**（含 ADV-HAR-02 集成测试）
+- `bun test packages/core/__tests__/supervisor-pool.test.ts` — **13 pass / 0 fail**（含 ADV-HAR-04 空池测试）
