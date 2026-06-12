@@ -7,6 +7,7 @@
 
 import { resolve } from "node:path"
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs"
+import { z } from "zod"
 import type {
   HarnessStrictness,
   StrictnessSource,
@@ -18,8 +19,17 @@ import type {
 const PROJECT_CONFIG_DIR = ".deepreef"
 const PROJECT_CONFIG_FILE = "harness.json"
 
+// ADV-HAR-P0: Zod schema for harness config validation
+const HarnessStrictnessSchema = z.enum(["strict", "normal", "loose"])
+
+const ProjectHarnessConfigSchema = z.object({
+  strictness: HarnessStrictnessSchema.optional(),
+  modelOverrides: z.record(z.string(), HarnessStrictnessSchema).optional(),
+}).strict()
+
 /**
  * 读取项目级 harness 配置（.deepreef/harness.json）
+ * ADV-HAR-P0: 使用 Zod 校验，非法配置安全回退到 null
  */
 export function readProjectHarnessConfig(cwd?: string): ProjectHarnessConfig | null {
   const dir = resolve(cwd ?? process.cwd(), PROJECT_CONFIG_DIR)
@@ -28,7 +38,16 @@ export function readProjectHarnessConfig(cwd?: string): ProjectHarnessConfig | n
   try {
     const raw = readFileSync(filePath, "utf-8")
     const parsed = JSON.parse(raw)
-    if (parsed && typeof parsed === "object") return parsed as ProjectHarnessConfig
+    if (parsed && typeof parsed === "object") {
+      // ADV-HAR-P0: 使用 Zod 校验
+      const result = ProjectHarnessConfigSchema.safeParse(parsed)
+      if (result.success) {
+        return result.data as ProjectHarnessConfig
+      }
+      // 校验失败，记录错误并返回 null
+      console.warn(`[harness] Invalid config in ${filePath}:`, result.error.format())
+      return null
+    }
     return null
   } catch {
     return null

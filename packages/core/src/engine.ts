@@ -31,7 +31,7 @@ import {
   shouldCreateLedger,
   planRequestInstruction,
 } from "./task-ledger.js"
-import { resolveDefaultHarness } from "./model-profile/resolver.js"
+import { resolveDefaultHarness, resolveModelProfile } from "./model-profile/resolver.js"
 import { resolveHarnessStrictness, resolveEffectiveHarnessPolicy, readProjectHarnessConfig } from "./harness/index.js"
 import type { EffectiveHarnessPolicy, HarnessStrictness } from "./harness/index.js"
 import { ReadTracker } from "./read-before-write.js"
@@ -571,8 +571,9 @@ export class ReasonixEngine implements CoreEngine {
     const abortController = new AbortController()
     this.activeAbortController = abortController
 
-    // TUI-FIX-10: clear stale workers from previous submit
-    this.emitOrchestration?.({ role: "orchestration", orchestration: { kind: "worker_remove", workerId: "*" } })
+    // ADV-HAR-P1: 不再在 submit 开始时清除所有 worker
+    // worker 生命周期由 spawnSubagent 管理，completed/failed/cancelled 状态保留供 React 渲染
+    // worker_remove 仅在 session 切换时调用
 
     // 合并 agent 配置：优先使用传入的 agentConfig，否则用当前 agent 的默认配置
     const ac = agentConfig ?? agentConfigFor(this.currentAgent)
@@ -587,10 +588,13 @@ export class ReasonixEngine implements CoreEngine {
     const modelName = ac.model ?? this.config.model
     const isLocal = this.config.provider === "openai-compatible"
     const projectConfig = readProjectHarnessConfig()
+    // ADV-HAR-P0: 解析 modelProfile 用于推断默认严格度
+    const modelProfile = resolveModelProfile(modelName, isLocal, 0, undefined)
     const { strictness, source } = resolveHarnessStrictness({
       sessionStrictness: this.sessionStrictness,
       projectConfig,
       modelName,
+      modelProfile,
     })
     this.effectivePolicy = resolveEffectiveHarnessPolicy(strictness, source)
     const harnessProfile = resolveDefaultHarness(modelName, isLocal)  // 保留兼容：部分旧组件仍读取 HarnessProfile

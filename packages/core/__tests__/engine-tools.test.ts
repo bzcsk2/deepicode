@@ -336,9 +336,9 @@ describe("P2: Mid-session instruction queue", () => {
     engine.registerTool({ name: "ok", description: "ok", parameters: { type: "object", properties: {} }, concurrency: "shared", approval: "read", async execute() { return { content: "ok", isError: false } } })
 
     const gen = engine.submit("start")
-    // Skip strategy_notify event first (ST3)
+    // Skip orchestration and strategy_notify events
     let first = await gen.next()
-    if (first.value?.role === "strategy_notify") {
+    while (first.value?.role === "orchestration" || first.value?.role === "strategy_notify") {
       first = await gen.next()
     }
     expect(first.value?.role).toBe("tool_call_delta")
@@ -633,7 +633,8 @@ describe("LIFE-01: Engine shutdown", () => {
     const engine = makeEngine()
     const gen = engine.submit("hang")
     let first = await gen.next()
-    if (first.value?.role === "strategy_notify") {
+    // Skip orchestration and strategy_notify events
+    while (first.value?.role === "orchestration" || first.value?.role === "strategy_notify") {
       first = await gen.next()
     }
     expect(first.value?.role).toBe("assistant_delta")

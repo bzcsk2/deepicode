@@ -63,6 +63,16 @@ export type SubagentRunResult =
       warnings: string[]
     }
   | {
+      status: "failed"
+      id: string
+      subagent_type: string
+      description: string
+      result: string
+      files: string[]
+      usage: SubagentRunUsage
+      warnings: string[]
+    }
+  | {
       status: "async_launched"
       id: string
       description: string
