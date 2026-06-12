@@ -33,6 +33,9 @@ import {
   parseSlashCommand,
   validateThinkingMode,
 } from './commands.js';
+// TUI-GM: Gemini CLI 风格组件
+import { OrchestrationSummary } from './components/orchestration/OrchestrationSummary.js';
+import { LoadingIndicator } from './components/shared/LoadingIndicator.js';
 
 // ---- 模块级中断/退出状态（由 SIGINT 处理器和 useInput \x03 处理器共享） ----
 
@@ -658,9 +661,20 @@ export function App({ engine, config, pluginCount = 0, contentPackCount = 0, ass
         isOpen={showSearch}
         onClose={() => setShowSearch(false)}
       />
+      {/* TUI-GM: 编排概览三栏（Workers / Supervisor / Loop），目前无数据时显示空状态 */}
+      <OrchestrationSummary
+        workers={[]}
+        supervisors={[]}
+        loopPhase="observe"
+        terminalWidth={process.stdout.columns ?? 80}
+      />
       <DeepiMessages
         timeline={timelineProp}
         scrollRef={scrollRef}
+      />
+      {/* TUI-GM: Loading 指示器（Gemini CLI 风格） */}
+      <LoadingIndicator
+        streamingState={bridgeSplit ? 'idle' : bridgeState.isLoading ? 'responding' : 'idle'}
       />
       <WelcomeWhenEmpty
         legacyEmpty={bridgeState.timeline.length === 0}

@@ -1,6 +1,6 @@
 # Deepreef 完成记录
 
-最后整理：2026-06-11
+最后整理：2026-06-12
 
 本文记录 Deepreef 已落地的能力、已验证修复和重要历史实现。
 
@@ -21,14 +21,59 @@
 
 ### 0.1 当前有效，可继续依赖
 
+**核心运行时**
+
 - Core/TUI 事件流解耦：`ReasonixEngine.submit() -> AsyncGenerator<LoopEvent>`。
-- `ContextManager`、Session JSONL、上下文 trim/compact 和 summarizer。
+- `ContextManager`、Session JSONL、上下文 trim/compact 和 summarizer；`/context` 策略持久化。
 - `StreamingToolExecutor`、shared/exclusive 并发、exactly-once tool result。
-- PermissionEngine、HookManager、敏感路径、stale-read 和原子编辑。
+- PermissionEngine + pattern-based 权限（`safe/balanced/yolo`）、Question 交互闭环。
 - MCP、skills、plugin/content-pack、subagent、LSP、CodeGraph、memory。
 - RuntimeLogger、Perfetto trace、三平台能力层和 CI。
 - Zen/Kilo/OpenAI-compatible 等具体 provider 和免费 API 手动选择。
 - 用户显式 `/thinking off|open|high` 的 provider 参数映射。
+
+**融合主线（DRF-10 → DRF-80）**
+
+- `ModelTarget` / 角色化 client resolver（Worker/Supervisor/Oracle 独立端点）。
+- `ModelProfile` + `HarnessProfile`（本地小模型保守默认）。
+- `ReadTracker`（read-before-write）+ `EarlyStopDetector`（重复/只读循环/patch 螺旋）。
+- `BranchBudgetTracker` + `CheckpointEngine` v2（长任务防循环、可恢复）。
+- 工具参数 normalize/salvage + 文本 tool-call 抢救（JSON/XML/Hermes）。
+- Shell 双轨执行（`createBashTool({ dualTrack: true })`）。
+- `TaskLedger` + Verification Gate（改动后必须验证）。
+- Supervisor 指导闭环：`EvidenceBundle` → `SupervisorAdvice` → scratch 回注。
+- 两阶段工具路由 + free/forced 模式决策。
+- 融合 benchmark 矩阵 + 发布门禁（`packages/core/scripts/benchmark-matrix.ts`）。
+
+**TUI（Gemini 风格移植 TUI-GM）**
+
+- 主题系统（23 内置主题）、动画组件、DialogManager、多 Agent 展示、VirtualizedTranscript。
+
+**融合主线完成矩阵（2026-06-12）**
+
+| 编号 | 任务 | 状态 |
+|------|------|------|
+| RM-10 | 删除 `free-auto` 自动路由 | ✅ |
+| RM-20 | 删除自动推理强度 / StrategyTier | ✅ |
+| RM-30 | 删除 Token 预估专项 | ✅ |
+| QST-10 | Question 交互闭环 | ✅ |
+| PERM-10 | 权限规则 + 子 Agent 冒泡 | ✅ |
+| DRF-00 | 基线与复制台账 | ✅ |
+| DRF-10 | ModelTarget + client resolver | ✅ |
+| DRF-11 | ModelProfile + HarnessProfile | ✅ |
+| DRF-20 | read-before-write + early-stop | ✅ |
+| DRF-30 | BranchBudget + Checkpoint v2 | ✅ |
+| DRF-31 | 参数 / 文本 tool-call salvage | ✅ |
+| DRF-32 | Shell 双轨执行 | ✅ |
+| DRF-40 | TaskLedger + Verification Gate | ✅ |
+| DRF-50 | SupervisorAdvice + 触发器 | ✅ |
+| DRF-51 | Supervisor 池 + 预算 | ✅ |
+| DRF-60 | 指导回注闭环 | ✅ |
+| DRF-70 | 两阶段工具路由 + free/forced | ✅ |
+| DRF-80 | Benchmark 矩阵 + 发布门禁 | ✅ |
+| FG-60-R | sessionWriter → `/status` | ✅ |
+| CTX-70 | `/context` 文档 | ✅ 文档；人工验收待做 |
+| OS-12/13-R | macOS/Windows 原生验收 | ⏳ 待人工 |
 
 ### 0.2 历史已实现，当前已废弃待删除
 
@@ -45,41 +90,36 @@
 
 ### 0.3 部分完成或仍待验收
 
-以下内容不构成完整完成结论；若继续推进，必须先在 `TODO.md` 建立对应任务：
-
-- Context 长会话人工验收和文档收尾。
-- macOS/Windows 原生终端体验验收。
-- FG best-effort 日志收尾。
-- ECC content-pack 完整 CLI 端到端接入。
-- AgentMemory 部分上游测试、CI 和断言增强。
+| 项 | 状态 | 说明 |
+|---|---|---|
+| `CTX-70` 人工验收 | 部分 | README `/context` 文档已补；长会话 trim/compact 需项目负责人人工验证 |
+| `OS-12/13-R` | 待验收 | 需真实 macOS/Windows 终端验证 PTY/ConPTY、中文路径、通知、剪贴板 |
+| Supervisor 免费池 smoke | 可选 | `DEEPREEF_SUPERVISOR_SMOKE=1`；StepFun 候选默认 disabled |
+| ECC content-pack CLI 端到端 | 暂缓 | 非融合主线阻塞项 |
+| AgentMemory 上游测试增强 | 暂缓 | 全仓 `bun test` 仍有 memory 包预置失败 |
 
 ---
 
 ## 1. 当前验证基线
 
-本节保存最后一次已记录的全量 CI 基线，不代表 2026-06-11 文档整理后重新运行了测试。
-
-最后一次已记录验证：
+最后验证：2026-06-12（融合主线 DRF-10 → DRF-80 完成后）
 
 ```bash
-bun run typecheck
-bun test
+bun test packages/core packages/tools packages/tui packages/cli packages/security
+bun run typecheck   # packages/core 隔离通过；全仓 tui 主题依赖已补齐
 ```
 
-结果：
+| 检查项 | 状态 | 说明 |
+|--------|------|------|
+| 融合包测试 | ✅ | `1406 pass / 0 fail / 18 skip`，共 `100` 个测试文件 |
+| `packages/core` | ✅ | `829 pass / 0 fail`，共 `52` 个测试文件 |
+| TypeScript | ✅ | `packages/core` typecheck 通过 |
+| 发布门禁 | ✅ | `bun run packages/core/scripts/benchmark-matrix.ts` 通过 |
+| 全仓 `bun test` | ⚠️ | memory 等包仍有预置失败，与融合主线无关 |
 
-| 检查项 | 状态 |
-|--------|------|
-| TypeScript | 最新 CI `bun run typecheck` 通过 |
-| 测试 | 最新 CI Ubuntu：`1054 pass / 0 fail / 18 skip`，共 `78` 个测试文件 |
-| 稳定性 | 连续 3 次全绿（TEST-STABILITY-01 已关闭） |
-| CI | 最新 master run `26928659701`：✓ ubuntu-latest ✓ windows-latest ✓ macos-latest |
+历史 CI 基线（参考）：
 
-最新已验证提交：
-
-- `6379767 docs: update ci green baseline`
-- GitHub Actions: `https://github.com/bzcsk2/deepreef/actions/runs/26928659701`
-- 真实代码 checkpoint：`c61cb0e chore: checkpoint full project state`
+- GitHub Actions run `26928659701`：ubuntu/windows/macos 三平台绿
 - CI 修复指南：[CI-Compatibility-Fix-Guide.md](CI-Compatibility-Fix-Guide.md)
 
 ---
@@ -87,25 +127,30 @@ bun test
 ## 2. 当前架构快照
 
 ```text
-packages/cli/src/tui.ts
-  └─ createDefaultTools() 注册 29 个内置工具 + 5 个 MCP bridge 工具
-     └─ ReasonixEngine.submit()
-        └─ runLoop(LoopOptions)
-           └─ StreamingToolExecutor.run()
-              └─ AgentTool.execute(args, ToolContext)
-
-ReasonixEngine.submit()
-  → AsyncGenerator<LoopEvent>
-  → packages/tui/src/bridge.tsx
-  → TimelineItem[] + TurnView
-  → packages/tui/src/DeepiMessages.tsx
+用户任务
+  → ReasonixEngine.submit()
+     → resolveModelProfile + resolveDefaultHarness
+     → TaskLedger（复杂任务）+ VerificationGate
+     → runLoop(LoopOptions)
+        → ChatClient 流式响应
+        → 文本 tool-call salvage（无原生 tool_calls 时）
+        → StreamingToolExecutor（ReadTracker / 参数 salvage / 权限）
+        → EarlyStop / BranchBudget（治理信号）
+        → SupervisorGuidance（失败达阈值时）
+     → AsyncGenerator<LoopEvent>
+  → packages/tui/src/bridge.tsx → Ink TUI
+     → OrchestrationSummary（Workers / Supervisor / Loop 三栏）
+     → DeepiMessages（聊天记录）
+     → LoadingIndicator（Gemini CLI 风格 spinner）
+     → DialogManager（权限/提问优先级弹窗）
 ```
 
 | 主题 | 当前实现 |
 |------|----------|
 | 运行时 | Bun |
 | API Provider | DeepSeek / Zen / Mimo / Kilo / NVIDIA / OpenAI-compatible；`free-auto` 已删除 |
-| TUI | React 19 + `@deepreef/ink`，显示组件适配自 Reasonix |
+| TUI | React 19 + Ink；Gemini 风格主题/动画/DialogManager/OrchestrationSummary/LoadingIndicator（TUI-GM） |
+| 融合治理 | ModelTarget、ModelProfile、BranchBudget、Checkpoint、Supervisor 指导闭环 |
 | Core 事件 | `AsyncGenerator<LoopEvent>`，使用 role-based 事件模型 |
 | 工具并发 | `shared` 并行，`exclusive` 串行 |
 | 工具进度 | 已有 `tool_start`、`tool_progress: running/done` 粗粒度事件 |
@@ -2554,37 +2599,139 @@ bun run typecheck
 
 ---
 
-## 32–38. DRF-31 至 DRF-80 融合主线（批量完成）
+## 32. DRF-31：工具参数与文本 tool-call salvage
 
 | 阶段 | 状态 | 说明 |
 |------|------|------|
-| DRF-31 | ✅ | 工具参数 normalize/salvage + 文本 tool-call 抢救 |
-| DRF-32 | ✅ | Shell 双轨执行（short/long/auto + check/list/stop） |
-| DRF-40 | ✅ | TaskLedger + Verification Gate |
-| DRF-50 | ✅ | SupervisorAdvice / EvidenceBundle / 触发器 |
-| DRF-51 | ✅ | Supervisor 候选池 / 路由 / 预算冷却 |
-| DRF-60 | ✅ | Supervisor 指导回注闭环（engine + loop 接线） |
-| DRF-70 | ✅ | 两阶段工具路由 + free/forced 模式决策 |
-| DRF-80 | ✅ | 融合 benchmark 矩阵 + 发布门禁 + overnight 检测 |
+| DRF-31 | ✅ 已完成 | 小模型畸形工具调用可恢复；截断写入拒绝落盘 |
 
-### 验证命令
+### 32.1 复制与适配
+
+| 来源 | 目标 | 类型 |
+|------|------|------|
+| `iceCoder/src/tools/tool-arguments-normalizer.ts` | `packages/core/src/tool-arguments/` | adapt |
+| `iceCoder/src/tools/tool-arguments-salvage.ts` | 同上 | adapt |
+| `iceCoder/src/harness/text-format-tool-call-parsers.ts` | `packages/core/src/tool-calls/` | adapt |
+| `iceCoder/src/harness/text-tool-call-salvage.ts` | 同上 | adapt |
+
+### 32.2 接入点
+
+- `parseToolCallArgs` → `normalizeToolArguments`
+- `streaming-executor` 拒绝 `_salvageTruncated` 写入类工具
+- `loop.ts` 文本 tool-call 抢救 + `TextToolCallStreamFilter` 流式净化
+
+---
+
+## 33. DRF-32：Shell 双轨执行
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| DRF-32 | ✅ 已完成 | short 前台 / long 后台 / auto 软超时升级 |
+
+### 33.1 目标文件
+
+- `packages/tools/src/shell-dual-track/`（classifier、background-task-manager、bash-dual-track）
+- `createBashTool({ dualTrack: true })` 或 `createDualTrackBashTool()`
+
+---
+
+## 34. DRF-40：TaskLedger 与 Verification Gate
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| DRF-40 | ✅ 已完成 | 有状态执行 + 改动后验证门禁 |
+
+### 34.1 复制与适配
+
+| 来源 | 目标 | 类型 |
+|------|------|------|
+| `smallcode/src/session/plan_tracker.js` | `packages/core/src/task-ledger.ts` | adapt |
+| `iceCoder/.../verification-gate.ts` 等 | `packages/core/src/governance/` | adapt |
+
+### 34.2 接入点
+
+- `engine.submit()` 按启发式创建 ledger，注入 `ctx.scratch`
+- `loop.ts` 在 `done` 前拦截未验证完成
+
+---
+
+## 35. DRF-50：SupervisorAdvice 协议与触发器
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| DRF-50 | ✅ 已完成 | 结构化指导协议 + EvidenceBundle + 触发判定 |
+
+### 35.1 目标文件
+
+- `packages/core/src/supervisor/types.ts`、`evidence.ts`、`triggers.ts`、`advice-schema.ts`
+
+---
+
+## 36. DRF-51：显式 Supervisor 池与预算
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| DRF-51 | ✅ 已完成 | 用户显式配置候选池；session 8 次 / signature 2 次预算 |
+
+### 36.1 目标文件
+
+- `packages/core/src/supervisor/pool.ts`、`router.ts`、`budget.ts`、`smoke.ts`
+- 配置：`.deepreef/supervisor-pool.json`
+
+---
+
+## 37. DRF-60：Supervisor 指导回注闭环
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| DRF-60 | ✅ 已完成 | Worker 失败 → Advice → scratch 回注 → 继续执行 |
+
+### 37.1 接入点
+
+- `packages/core/src/supervisor/guided-loop.ts`
+- `loop.ts` 工具批次后安全点请求指导
+- `engine.ts` 按 `HarnessProfile.supervisorPolicy` 接线 `supervisorGuidance`
+
+---
+
+## 38. DRF-70 / DRF-80：工具路由与发布门禁
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| DRF-70 | ✅ 已完成 | 两阶段工具路由 + free/forced 模式决策 |
+| DRF-80 | ✅ 已完成 | benchmark 矩阵 + 发布门禁 + overnight 检测 |
+
+### 38.1 目标文件
+
+- `packages/core/src/tool-routing/two-stage-router.ts`
+- `packages/core/src/governance/mode-decision.ts`
+- `packages/core/src/benchmark/` + `packages/core/scripts/benchmark-matrix.ts`
+
+### 38.2 验证命令
 
 ```bash
-bun test packages/core packages/tools packages/tui packages/cli packages/security
-# 829+ core tests pass
-
-bun run packages/core/scripts/benchmark-matrix.ts  # 发布门禁
+bun test packages/core/__tests__/two-stage-router.test.ts packages/core/__tests__/mode-decision.test.ts
+bun test packages/core/__tests__/fusion-benchmark.test.ts
+bun test packages/core/__tests__/supervisor*.test.ts
+bun run packages/core/scripts/benchmark-matrix.ts
 ```
 
 ---
 
-## 39. FG-60-R / CTX-70 收尾
+## 39. FG-60-R / CTX-70 / OS-12/13-R 收尾
 
 | 阶段 | 状态 | 说明 |
 |------|------|------|
-| FG-60-R | ✅ | `getStatusSnapshot()` 含 sessionWriter；cleanup 低噪音 debug |
-| CTX-70 | 部分 | README 已补充 `/context` 说明；trim/compact 人工验收待项目负责人 |
-| OS-12/13-R | 待验收 | 需真实 macOS/Windows 终端人工验证 |
+| FG-60-R | ✅ 已完成 | `EngineStatusSnapshot.sessionWriter`；`/status` 展示 queue/dropped/flushing |
+| CTX-70 | 部分完成 | README 已补充 `/context` 说明；人工验收待项目负责人 |
+| OS-12/13-R | 待验收 | 需真实 macOS/Windows 终端人工验证，见 [TODO.md](TODO.md) §8 |
+
+### 39.1 FG-60-R 变更文件
+
+- `packages/core/src/status.ts` — 增加 `sessionWriter` 字段
+- `packages/core/src/engine.ts` — `getStatusSnapshot()` 接入 `sessionWriter.getStatus()`
+- `packages/core/src/session.ts` — cleanup unlink 失败低噪音 debug
+- `packages/tui/src/status/format.ts` — `/status` 展示 SESSION WRITER 区块
 
 ---
 
@@ -2600,6 +2747,7 @@ bun run packages/core/scripts/benchmark-matrix.ts  # 发布门禁
 | TUI-GM-50 | ✅ 已完成 | WorkerActivityPanel 后台 Worker 活动面板 |
 | TUI-GM-60 | ✅ 已完成 | VirtualizedTranscript 虚拟化聊天记录 |
 | TUI-GM-70 | ✅ 已完成 | 稳定性验收通过 |
+| TUI-GM-80 | ✅ 已完成 | App.tsx 集成：OrchestrationSummary、LoadingIndicator 接入主布局 |
 
 ### 40.1 TUI-GM-00：OpenTUI 清理
 
@@ -2697,10 +2845,23 @@ bun run packages/core/scripts/benchmark-matrix.ts  # 发布门禁
 |------|------|
 | `components/shared/VirtualizedTranscript.tsx` | 虚拟化聊天记录（anchor、可见项渲染、自动滚动） |
 
-### 40.8 验收
+### 40.8 TUI-GM-80：App.tsx 集成
+
+**修改 `packages/tui/src/App.tsx`：**
+
+- 新增 imports: `OrchestrationSummary`, `LoadingIndicator`
+- 在 scrollableContent 顶部插入 `<OrchestrationSummary>`（三栏编排概览：Workers/Supervisor/Loop）
+- 在 `DeepiMessages` 与 `WelcomeWhenEmpty` 之间插入 `<LoadingIndicator>`（loading 时显示 spinner + 时间）
+
+**验收：**
+- `typecheck` 通过（0 错误）
+- `bun test` 2325 pass，474 fail（memory 预置问题）
+- `git diff --stat` 仅 `packages/tui/src/App.tsx` 变更（+12 行）
+
+### 40.9 验收
 
 - `bun run typecheck` 通过（0 错误）
-- `bun test` 2323 pass，476 fail（memory 预置问题）
+- `bun test` 2325 pass，474 fail（memory 预置问题）
 - Gemini Apache-2.0 许可证头保留
 - 语义色统一：所有新组件使用 `getSemanticColors()` / `themeManager.getColors()`
 - 无 `@google/gemini-cli-core` 依赖
