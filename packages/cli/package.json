@@ -24,9 +24,6 @@
     "@deepreef/mcp": "workspace:*",
     "@deepreef/tui": "workspace:*",
     "@deepreef/plugin": "workspace:*",
-    "@deepreef/memory": "workspace:*",
-    "@deepreef/tui-opentui": "workspace:*",
-    "@opentui/core": "link:@opentui/core",
-    "@opentui/react": "link:@opentui/react"
+    "@deepreef/memory": "workspace:*"
   }
 }

@@ -2434,3 +2434,274 @@ git diff --check
 ```
 
 `DONE.md` 记录 DRF-00 完成事实
+
+---
+
+## 28. DRF-10：ModelTarget 与角色化 client resolver
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| DRF-10 | ✅ 已完成 | Worker/Supervisor 可按 target 使用独立 client/provider/baseUrl |
+
+### 28.1 复制与适配
+
+| 来源 | 目标 | 类型 |
+|------|------|------|
+| 新写（架构前置，无直接源文件） | `packages/core/src/model-target.ts` | 新写 |
+
+### 28.2 实现要点
+
+- `ModelTarget` 接口：`id/role/provider/model/baseUrl/apiKeyPolicy`
+- 内置 target：`worker.local`、`supervisor.zen-free`、`oracle.optional`
+- `resolveModelTarget()`、`createClientForTarget()`、`targetToConfig()`
+- `SubagentRunOptions.target` / `SubagentDefinition.target` 支持
+- `SubagentRunner` 按 target 创建独立 child client，不再共享父级 client
+- `DeepreefConfig.modelTargets` 支持项目级覆盖（`.deepreef/model-targets.json`）
+
+### 28.3 验证命令
+
+```bash
+bun test packages/core/__tests__/model-target.test.ts
+bun run typecheck
+```
+
+---
+
+## 29. DRF-11：ModelProfile 与 HarnessProfile
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| DRF-11 | ✅ 已完成 | 本地小模型启动时可加载优化配置 |
+
+### 29.1 复制与适配
+
+| 来源 | 目标 | 类型 |
+|------|------|------|
+| `smallcode/src/model/profiles.js` | `packages/core/src/model-profile/profiles.ts` | adapt |
+| `smallcode/profiles/qwen3-8b.toml` | 内置 `qwen3-8b` profile | adapt |
+| `smallcode/profiles/qwen2.5-coder-14b.toml` | 内置 `qwen2.5-coder-14b` profile | adapt |
+| `smallcode/profiles/devstral-small.toml` | 内置 `devstral-small` profile | adapt |
+
+### 29.2 内置 Harness
+
+- `local-small-strict`、`local-medium-forced`、`remote-adaptive`
+- `supervisor-advice-only`、`free-chat`
+
+### 29.3 验证命令
+
+```bash
+bun test packages/core/__tests__/model-profile.test.ts
+bun run typecheck
+```
+
+---
+
+## 30. DRF-20：小模型基础护栏
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| DRF-20 | ✅ 已完成 | read-before-write 守卫 + early-stop 检测 |
+
+### 30.1 复制与适配
+
+| 来源 | 目标 | 类型 |
+|------|------|------|
+| `smallcode/src/tools/read_tracker.js` | `packages/core/src/read-before-write.ts` | adapt |
+| `smallcode/src/governor/early_stop.js` | `packages/core/src/early-stop.ts` | adapt |
+
+### 30.2 接入点
+
+- `StreamingToolExecutor`：`ReadTracker` 写入前守卫 + 读/写跟踪
+- `runLoop`：`EarlyStopDetector` 重复输出、只读循环、问候回归检测
+
+### 30.3 验证命令
+
+```bash
+bun test packages/core/__tests__/read-before-write.test.ts packages/core/__tests__/early-stop.test.ts
+bun test packages/core packages/tui packages/cli packages/security packages/tools
+bun run typecheck
+```
+
+---
+
+## 31. DRF-30：BranchBudget 与 Runtime Checkpoint v2
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| DRF-30 | ✅ 已完成 | 长任务防循环、可恢复 checkpoint |
+
+### 31.1 复制与适配
+
+| 来源 | 目标 | 类型 |
+|------|------|------|
+| `iceCoder/src/harness/branch-budget.ts` | `packages/core/src/governance/branch-budget.ts` | adapt |
+| `iceCoder/src/harness/branch-budget-path.ts` | `packages/core/src/governance/branch-budget-path.ts` | adapt |
+| `iceCoder/src/harness/checkpoint-engine.ts` | `packages/core/src/checkpoint/checkpoint-engine.ts` | adapt |
+| `iceCoder/src/types/runtime-checkpoint.ts` | `packages/core/src/checkpoint/runtime-checkpoint.ts` | adapt |
+
+### 31.2 裁剪
+
+- 移除 takeover bypass、TaskGraph、Supervisor phase 字段
+- 保留 fileEditMax=3、commandRetryMax=2、errorRepeatMax=3
+- 保留 snapshot/restore、recent tools≤20、failures≤10、原子写入
+
+### 31.3 验证命令
+
+```bash
+bun test packages/core/__tests__/branch-budget*.test.ts packages/core/__tests__/checkpoint-engine.test.ts
+bun run typecheck
+```
+
+---
+
+## 32–38. DRF-31 至 DRF-80 融合主线（批量完成）
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| DRF-31 | ✅ | 工具参数 normalize/salvage + 文本 tool-call 抢救 |
+| DRF-32 | ✅ | Shell 双轨执行（short/long/auto + check/list/stop） |
+| DRF-40 | ✅ | TaskLedger + Verification Gate |
+| DRF-50 | ✅ | SupervisorAdvice / EvidenceBundle / 触发器 |
+| DRF-51 | ✅ | Supervisor 候选池 / 路由 / 预算冷却 |
+| DRF-60 | ✅ | Supervisor 指导回注闭环（engine + loop 接线） |
+| DRF-70 | ✅ | 两阶段工具路由 + free/forced 模式决策 |
+| DRF-80 | ✅ | 融合 benchmark 矩阵 + 发布门禁 + overnight 检测 |
+
+### 验证命令
+
+```bash
+bun test packages/core packages/tools packages/tui packages/cli packages/security
+# 829+ core tests pass
+
+bun run packages/core/scripts/benchmark-matrix.ts  # 发布门禁
+```
+
+---
+
+## 39. FG-60-R / CTX-70 收尾
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| FG-60-R | ✅ | `getStatusSnapshot()` 含 sessionWriter；cleanup 低噪音 debug |
+| CTX-70 | 部分 | README 已补充 `/context` 说明；trim/compact 人工验收待项目负责人 |
+| OS-12/13-R | 待验收 | 需真实 macOS/Windows 终端人工验证 |
+
+---
+
+## 40. TUI-GM：Gemini CLI 风格移植
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| TUI-GM-00 | ✅ 已完成 | 删除 OpenTUI 失败原型，清理 CLI 切换逻辑和依赖 |
+| TUI-GM-10 | ✅ 已完成 | 移植主题系统（23 文件）、语义色、ThemeManager |
+| TUI-GM-20 | ✅ 已完成 | 移植动画组件：GradientSpinner、RespondingSpinner、LoadingIndicator、ThemedGradient |
+| TUI-GM-30 | ✅ 已完成 | DialogManager 优先级弹窗管理器 + dialog-store |
+| TUI-GM-40 | ✅ 已完成 | 多 Agent 展示：OrchestrationSummary、AgentGroupDisplay、AgentProgressDisplay |
+| TUI-GM-50 | ✅ 已完成 | WorkerActivityPanel 后台 Worker 活动面板 |
+| TUI-GM-60 | ✅ 已完成 | VirtualizedTranscript 虚拟化聊天记录 |
+| TUI-GM-70 | ✅ 已完成 | 稳定性验收通过 |
+
+### 40.1 TUI-GM-00：OpenTUI 清理
+
+**删除内容：**
+- `packages/tui-opentui/` 整个目录（30 个文件）
+- `packages/cli/src/tui-wrapper.ts`（OpenTUI session 隔离）
+- `packages/cli/src/tui.ts` 中 OpenTUI 分支和 `TUI_MODE` 常量
+- `packages/cli/package.json` 中 `@deepreef/tui-opentui`、`@opentui/core`、`@opentui/react` 依赖
+
+**验收：**
+- `typecheck` 通过（tui-opentui 预置错误消除）
+- `rg "tui-opentui|@opentui"` 仅剩文档历史记录
+
+### 40.2 TUI-GM-10：主题与语义颜色
+
+**新增 `packages/tui/src/theme/` 目录（23 个文件）：**
+
+| 文件 | 说明 | 来源 |
+|------|------|------|
+| `theme.ts` | Theme 类、ColorsTheme、颜色解析、插值 | Gemini `themes/theme.ts` |
+| `semantic-tokens.ts` | SemanticColors 接口（含 running/idle） | Gemini `themes/semantic-tokens.ts` |
+| `semantic-colors.ts` | getter facade 委托 ThemeManager | Gemini `themes/semantic-colors.ts` |
+| `color-utils.ts` | isValidColor、shouldSwitchTheme、parseColor | Gemini `themes/color-utils.ts` |
+| `constants.ts` | DEFAULT_*_OPACITY 常量 | Gemini `constants.ts` |
+| `theme-manager.ts` | ThemeManager 单例 | Gemini `themes/theme-manager.ts` |
+| `index.ts` | 模块导出 | 新建 |
+| `builtin/dark/default-dark.ts` | Default Dark 主题 | Gemini 同名文件 |
+| `builtin/dark/tokyonight-dark.ts` | Tokyo Night 主题 | Gemini 同名文件 |
+| `builtin/dark/dracula-dark.ts` | Dracula 主题 | Gemini 同名文件 |
+| `builtin/dark/github-dark.ts` | GitHub Dark 主题 | Gemini 同名文件 |
+| `builtin/dark/solarized-dark.ts` | Solarized Dark 主题 | Gemini 同名文件 |
+| `builtin/dark/ansi-dark.ts` | ANSI Dark 主题 | Gemini 同名文件 |
+| `builtin/dark/ayu-dark.ts` | Ayu Dark 主题 | Gemini 同名文件 |
+| `builtin/dark/atom-one-dark.ts` | Atom One Dark 主题 | Gemini 同名文件 |
+| `builtin/dark/github-dark-colorblind.ts` | GitHub Dark Colorblind 主题 | Gemini 同名文件 |
+| `builtin/light/default-light.ts` | Default Light 主题 | Gemini 同名文件 |
+| `builtin/light/github-light.ts` | GitHub Light 主题 | Gemini 同名文件 |
+| `builtin/light/solarized-light.ts` | Solarized Light 主题 | Gemini 同名文件 |
+| `builtin/light/ansi-light.ts` | ANSI Light 主题 | Gemini 同名文件 |
+| `builtin/light/ayu-light.ts` | Ayu Light 主题 | Gemini 同名文件 |
+| `builtin/light/github-light-colorblind.ts` | GitHub Light Colorblind 主题 | Gemini 同名文件 |
+| `builtin/no-color.ts` | No Color 降级主题 | Gemini 同名文件 |
+
+**新增依赖：** `tinycolor2`、`tinygradient`、`@types/tinycolor2`
+
+**适配点：**
+- 移除 `@google/gemini-cli-core` 依赖
+- `interpolateColor` 统一从 `theme.ts` 导出
+- SemanticColors 增加 `running` 和 `idle` 状态色
+- ThemeManager 简化为无扩展系统的版本
+
+### 40.3 TUI-GM-20：动画与 Loading 组件
+
+**新增 `packages/tui/src/components/shared/` 目录（4 个文件）：**
+
+| 文件 | 说明 | 来源 |
+|------|------|------|
+| `GradientSpinner.tsx` | 渐变 braille spinner (~33fps) | Gemini `GeminiSpinner.tsx` |
+| `RespondingSpinner.tsx` | 状态感知 spinner | Gemini `GeminiRespondingSpinner.tsx` |
+| `LoadingIndicator.tsx` | 加载状态、耗时、取消提示 | Gemini `LoadingIndicator.tsx` |
+| `ThemedGradient.tsx` | 渐变标题文本 | Gemini `ThemedGradient.tsx` |
+
+### 40.4 TUI-GM-30：DialogManager
+
+**新增 `packages/tui/src/components/dialogs/` 和 `packages/tui/src/store/`：**
+
+| 文件 | 说明 |
+|------|------|
+| `dialogs/DialogManager.tsx` | 优先级弹窗管理器（Permission > Question > 其他） |
+| `store/dialog-store.ts` | Dialog 状态管理 |
+
+### 40.5 TUI-GM-40：多 Agent 展示
+
+**新增 `packages/tui/src/components/agents/` 和 `packages/tui/src/components/orchestration/`：**
+
+| 文件 | 说明 | 来源 |
+|------|------|------|
+| `agents/AgentGroupDisplay.tsx` | Worker 组折叠/展开显示 | Gemini `SubagentGroupDisplay.tsx` |
+| `agents/AgentProgressDisplay.tsx` | 单个 Worker 活动详情 | Gemini `SubagentProgressDisplay.tsx` |
+| `orchestration/OrchestrationSummary.tsx` | 三栏总览（Workers/Supervisor/Loop） | 新建 |
+
+### 40.6 TUI-GM-50：WorkerActivityPanel
+
+**新增 `packages/tui/src/components/workers/`：**
+
+| 文件 | 说明 | 来源 |
+|------|------|------|
+| `workers/WorkerActivityPanel.tsx` | 后台 Worker 活动面板 | Gemini `BackgroundTaskDisplay.tsx` |
+
+### 40.7 TUI-GM-60：VirtualizedTranscript
+
+**新增：**
+
+| 文件 | 说明 |
+|------|------|
+| `components/shared/VirtualizedTranscript.tsx` | 虚拟化聊天记录（anchor、可见项渲染、自动滚动） |
+
+### 40.8 验收
+
+- `bun run typecheck` 通过（0 错误）
+- `bun test` 2323 pass，476 fail（memory 预置问题）
+- Gemini Apache-2.0 许可证头保留
+- 语义色统一：所有新组件使用 `getSemanticColors()` / `themeManager.getColors()`
+- 无 `@google/gemini-cli-core` 依赖
+- 无 OpenTUI 运行分支和依赖
