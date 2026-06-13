@@ -345,8 +345,11 @@ export class AsyncSessionWriter {
       while (this.flushing || this.queue.length > 0) {
         await new Promise(r => setTimeout(r, 5))
       }
-    } catch {
-      // best-effort: swallow errors so shutdown never hangs
+    } catch (e) {
+      // ADV-BUG-05: Log session drain errors
+      if (this.logger.isEnabled("warn")) {
+        this.logger.warn("session.writer.drain_error", { error: e instanceof Error ? e.message : String(e) })
+      }
     }
   }
 
@@ -375,8 +378,11 @@ export class AsyncSessionWriter {
       }
       this.lastError = undefined
       this.lastFlushAt = Date.now()
-    } catch {
-      // best-effort: swallow write errors silently
+    } catch (e) {
+      // ADV-BUG-05: Log flush errors
+      if (this.logger.isEnabled("warn")) {
+        this.logger.warn("session.writer.flush_error", { error: e instanceof Error ? e.message : String(e) })
+      }
     } finally {
       this.flushing = false
       if (this.queue.length > 0) {

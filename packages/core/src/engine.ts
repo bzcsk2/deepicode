@@ -486,20 +486,29 @@ export class ReasonixEngine implements CoreEngine {
 
     try {
       this.interrupt()
-    } catch {
-      // ignore
+    } catch (e) {
+      // ADV-BUG-05: Log interrupt errors
+      if (this.logger.isEnabled("warn")) {
+        this.logger.warn("engine.shutdown.interrupt_error", { error: e instanceof Error ? e.message : String(e) })
+      }
     }
 
     try {
       await this.ctx.shutdown()
-    } catch {
-      // ignore
+    } catch (e) {
+      // ADV-BUG-05: Log context shutdown errors
+      if (this.logger.isEnabled("warn")) {
+        this.logger.warn("engine.shutdown.context_error", { error: e instanceof Error ? e.message : String(e) })
+      }
     }
 
     try {
       await this.sessionWriter?.drain()
-    } catch {
-      // best-effort: don't let session flush block exit
+    } catch (e) {
+      // ADV-BUG-05: Log session drain errors
+      if (this.logger.isEnabled("warn")) {
+        this.logger.warn("engine.shutdown.session_drain_error", { error: e instanceof Error ? e.message : String(e) })
+      }
     }
 
     if (this.logger.isEnabled("info")) this.logger.info("engine.shutdown.done", { sessionId: this.sessionId })

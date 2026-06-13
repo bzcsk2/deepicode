@@ -133,10 +133,12 @@ export {
   buildSalvageTruncatedError,
   salvageTruncatedToolJson,
   SALVAGE_TRUNCATED_KEY,
-  SALVAGED_TRUNCATED_WRITE_TOOLS,
+  TOOL_SIDE_EFFECTS,
+  getToolSideEffect,
   shouldBlockSalvagedTruncatedWrite,
   buildSalvagedTruncatedWriteBlockMessage,
 } from "./tool-arguments/index.js"
+export type { ToolSideEffect } from "./tool-arguments/index.js"
 export {
   parseEmbeddedToolCallsFromText,
   containsEmbeddedToolCalls,

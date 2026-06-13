@@ -19,7 +19,12 @@ export class QueryEngine {
   async *stream(input: string, agentConfig?: AgentConfig): AsyncGenerator<LoopEvent> {
     for await (const event of this.engine.submit(input, agentConfig)) {
       for (const cb of this.listeners) {
-        try { cb(event) } catch {}
+        try {
+          cb(event)
+        } catch (e) {
+          // ADV-BUG-05: Log listener errors but don't interrupt the loop
+          console.warn(`[QueryEngine] Listener error: ${e instanceof Error ? e.message : String(e)}`)
+        }
       }
       yield event
     }

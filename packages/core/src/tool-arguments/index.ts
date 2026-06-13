@@ -12,7 +12,9 @@ export {
 } from "./salvage.js"
 
 export {
-  SALVAGED_TRUNCATED_WRITE_TOOLS,
+  type ToolSideEffect,
+  TOOL_SIDE_EFFECTS,
+  getToolSideEffect,
   shouldBlockSalvagedTruncatedWrite,
   buildSalvagedTruncatedWriteBlockMessage,
 } from "./truncation-recovery.js"

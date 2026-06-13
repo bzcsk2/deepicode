@@ -34,9 +34,11 @@ describe("CL-52: slash command routing helpers", () => {
     expect(validateThinkingMode("invalid")).toContain("Usage: /thinking <mode>")
   })
 
-  it("toggles build and plan agents", () => {
+  it("toggles through all registered agents", () => {
     expect(toggleAgent("build").next).toBe("plan")
-    expect(toggleAgent("plan").next).toBe("build")
+    expect(toggleAgent("plan").next).toBe("worker")
+    expect(toggleAgent("worker").next).toBe("supervisor")
+    expect(toggleAgent("supervisor").next).toBe("build")
   })
 
   it("builds help text with command strings and the active agent", () => {

@@ -103,16 +103,116 @@ export class ContextManager {
       throw new Error(`Context budget exceeded: scratch alone (${scratchTokens}t) exceeds window (${this.contextWindow}t)`)
     }
 
-    // CL-30: Final warning — if total still over budget after truncation,
-    // fold decision in loop.ts will force a fold on next turn
-    // (we don't throw here because the loop handles fold signals externally)
+    // ADV-BUG-03: Final budget invariant check
+    const summaryTokens = estimateTokens(summaryMsgs)
+    const allMessages = [...prefixMsgs, ...summaryMsgs, ...log, ...scratchMsgs]
+    const totalTokens = estimateTokens(allMessages)
+    
+    if (totalTokens > this.contextWindow) {
+      // ADV-BUG-03: Validate message structure integrity
+      this.validateMessageStructure(allMessages)
+      
+      // Log warning for diagnostics
+      if (this.contextWindow > 0) {
+        console.warn(
+          `[ContextManager] Final budget exceeded: ${totalTokens}t > ${this.contextWindow}t. ` +
+          `Attempting aggressive truncation.`
+        )
+      }
+      
+      // ADV-BUG-03: Aggressive truncation — remove oldest rounds until under budget
+      const truncatedLog = this.aggressiveTruncate(log, prefixTokens, summaryTokens, scratchTokens)
+      const truncatedMessages = [...prefixMsgs, ...summaryMsgs, ...truncatedLog, ...scratchMsgs]
+      const finalTokens = estimateTokens(truncatedMessages)
+      
+      if (finalTokens > this.contextWindow) {
+        // ADV-BUG-03: Return messages with warning instead of throwing
+        // This allows the provider call to proceed with a degraded context
+        console.warn(
+          `[ContextManager] WARNING: Unable to fit within budget after truncation. ` +
+          `Total: ${finalTokens}t, Window: ${this.contextWindow}t. ` +
+          `Returning truncated context. Provider may reject or degrade.`
+        )
+      }
+      
+      return truncatedMessages
+    }
 
-    return [
-      ...prefixMsgs,
-      ...summaryMsgs,
-      ...log,
-      ...scratchMsgs,
-    ]
+    // ADV-BUG-03: Validate message structure even when under budget
+    this.validateMessageStructure(allMessages)
+
+    return allMessages
+  }
+
+  /**
+   * ADV-BUG-03: Validate message structure integrity.
+   * Ensures assistant tool_calls have corresponding tool results.
+   */
+  private validateMessageStructure(messages: ChatMessage[]): void {
+    const toolCallIds = new Set<string>()
+    const toolResultIds = new Set<string>()
+    
+    for (const msg of messages) {
+      if (msg.role === "assistant" && msg.tool_calls) {
+        for (const tc of msg.tool_calls) {
+          toolCallIds.add(tc.id)
+        }
+      }
+      if (msg.role === "tool" && msg.tool_call_id) {
+        toolResultIds.add(msg.tool_call_id)
+      }
+    }
+    
+    // Check for orphaned tool_calls without results
+    for (const tcId of toolCallIds) {
+      if (!toolResultIds.has(tcId)) {
+        console.warn(
+          `[ContextManager] Orphaned tool_call detected: ${tcId} has no corresponding tool result. ` +
+          `This may cause provider errors.`
+        )
+      }
+    }
+  }
+
+  /**
+   * ADV-BUG-03: Aggressive truncation when over budget.
+   * Removes oldest rounds while preserving structure.
+   */
+  private aggressiveTruncate(
+    log: ChatMessage[],
+    prefixTokens: number,
+    summaryTokens: number,
+    scratchTokens: number,
+  ): ChatMessage[] {
+    const availableTokens = this.contextWindow - prefixTokens - summaryTokens - scratchTokens
+    if (availableTokens <= 0) return []
+    
+    let current = [...log]
+    let estimated = estimateTokens(current)
+    
+    while (estimated > availableTokens && current.length > 0) {
+      // Find and remove the oldest complete round (user + assistant + tools)
+      const firstUserIdx = current.findIndex(m => m.role === "user")
+      if (firstUserIdx < 0) {
+        // No user messages — remove oldest tool round
+        const firstToolIdx = current.findIndex(m => m.role === "tool")
+        if (firstToolIdx < 0) break
+        current = current.slice(firstToolIdx + 1)
+      } else {
+        // Remove from start to end of first user round
+        let roundEnd = current.length
+        for (let i = firstUserIdx + 1; i < current.length; i++) {
+          if (current[i].role === "user") {
+            roundEnd = i
+            break
+          }
+        }
+        current = current.slice(roundEnd)
+      }
+      estimated = estimateTokens(current)
+    }
+    
+    return current
   }
 
   reduceToTarget(mode: ContextReductionMode, targetRatio: number): ContextReductionResult {

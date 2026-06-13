@@ -173,17 +173,21 @@ export function createBridge(
 
   /**
    * 提交 bridge 状态变更；拆分模式下写入子 store 并跳过 React bridgeState 更新。
+   * ADV-BUG-04: 副作用移出 updater，保持 updater 纯函数。
    */
   const commitBridge = (updater: (prev: BridgeState) => Partial<BridgeState>): void => {
+    let patch: Partial<BridgeState> | undefined;
     setState(prev => {
-      const patch = updater(prev);
+      patch = updater(prev);
       if (bridgeRuntime && transcriptStore) {
-        // 副作用移出 updater，避免 React 严格模式 double-invoke 导致 applyPatch 被调用两次
-        queueMicrotask(() => bridgeRuntime.applyPatch(patch));
         return prev;
       }
       return { ...prev, ...patch };
     });
+    // ADV-BUG-04: 副作用在 updater 外执行，避免 React 严格模式 double-invoke
+    if (bridgeRuntime && transcriptStore && patch) {
+      bridgeRuntime.applyPatch(patch);
+    }
   };
 
   const publishTimeline = (patch?: (prev: BridgeState) => Partial<BridgeState>) => {
@@ -274,18 +278,25 @@ export function createBridge(
   const processQueue = () => {
     if (running || processingQueue) return;
     processingQueue = true;
+    let nextMessage: string | undefined;
     commitBridge(prev => {
       const [next, ...rest] = prev.messageQueue;
       if (!next) {
         processingQueue = false;
         return {};
       }
-      queueMicrotask(() => {
-        processingQueue = false;
-        void submit(next, true);
-      });
+      nextMessage = next;
       return { messageQueue: rest };
     });
+    // ADV-BUG-04: 副作用在 updater 外执行
+    if (nextMessage !== undefined) {
+      // 使用 setTimeout 而非 queueMicrotask，确保状态更新后再提交
+      const msg = nextMessage;
+      setTimeout(() => {
+        processingQueue = false;
+        void submit(msg, true);
+      }, 0);
+    }
   };
 
   const submit = async (text: string, isQueueResubmit = false, role?: AgentRole) => {
