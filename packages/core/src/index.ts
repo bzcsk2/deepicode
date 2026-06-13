@@ -133,6 +133,7 @@ export {
   buildSalvageTruncatedError,
   salvageTruncatedToolJson,
   SALVAGE_TRUNCATED_KEY,
+  SALVAGED_TRUNCATED_WRITE_TOOLS,
   TOOL_SIDE_EFFECTS,
   getToolSideEffect,
   shouldBlockSalvagedTruncatedWrite,

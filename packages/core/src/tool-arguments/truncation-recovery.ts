@@ -15,6 +15,16 @@ import { isSalvagedTruncatedArguments, buildSalvageTruncatedError } from "./salv
 export type ToolSideEffect = "none" | "workspace" | "process" | "network" | "external"
 
 /**
+ * ADV-BUG-01: 截断 salvage 后禁止执行的写入类工具（向后兼容导出）。
+ * 新代码应使用 getToolSideEffect() 检查副作用级别。
+ */
+export const SALVAGED_TRUNCATED_WRITE_TOOLS = new Set([
+  "write_file",
+  "edit",
+  "NotebookEdit",
+])
+
+/**
  * 工具副作用映射：定义每个工具的副作用级别。
  * 未列出的工具默认为 "none"（保守假设）。
  */

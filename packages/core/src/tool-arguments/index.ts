@@ -13,6 +13,7 @@ export {
 
 export {
   type ToolSideEffect,
+  SALVAGED_TRUNCATED_WRITE_TOOLS,
   TOOL_SIDE_EFFECTS,
   getToolSideEffect,
   shouldBlockSalvagedTruncatedWrite,

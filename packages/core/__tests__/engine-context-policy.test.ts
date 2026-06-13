@@ -197,7 +197,7 @@ describe("ReasonixEngine submit with context policy", () => {
     baseUrl: "http://localhost",
     maxTokens: 4096,
     temperature: 0.7,
-    contextWindow: 100,
+    contextWindow: 1000,
     maxContextRounds: 20,
   }
 

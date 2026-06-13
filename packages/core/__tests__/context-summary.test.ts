@@ -260,7 +260,7 @@ describe("ContextManager summary integration", () => {
   let manager: ContextManager
 
   beforeEach(() => {
-    manager = new ContextManager(20, 100)
+    manager = new ContextManager(20, 1000)
   })
 
   it("should start with empty summary", () => {
@@ -295,9 +295,10 @@ describe("ContextManager summary integration", () => {
 
   it("should update summary when compress mode is used", () => {
     manager.prefix.build("System prompt")
-    for (let i = 0; i < 10; i++) {
-      manager.log.append({ role: "user", content: `Message ${i}` })
-      manager.log.append({ role: "assistant", content: `Response ${i}` })
+    // Add enough messages to exceed target (0.3 * 1000 = 300 tokens)
+    for (let i = 0; i < 50; i++) {
+      manager.log.append({ role: "user", content: `Message ${i}: ${"x".repeat(20)}` })
+      manager.log.append({ role: "assistant", content: `Response ${i}: ${"y".repeat(20)}` })
     }
 
     manager.reduceToTarget("compress", 0.3)

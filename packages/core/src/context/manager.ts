@@ -126,12 +126,11 @@ export class ContextManager {
       const finalTokens = estimateTokens(truncatedMessages)
       
       if (finalTokens > this.contextWindow) {
-        // ADV-BUG-03: Return messages with warning instead of throwing
-        // This allows the provider call to proceed with a degraded context
-        console.warn(
-          `[ContextManager] WARNING: Unable to fit within budget after truncation. ` +
+        // ADV-BUG-03: Throw diagnostic error — cannot continue to provider
+        throw new Error(
+          `[ContextManager] FATAL: Unable to fit within budget after aggressive truncation. ` +
           `Total: ${finalTokens}t, Window: ${this.contextWindow}t. ` +
-          `Returning truncated context. Provider may reject or degrade.`
+          `Cannot proceed with provider request. Consider increasing context window or reducing system prompt size.`
         )
       }
       
