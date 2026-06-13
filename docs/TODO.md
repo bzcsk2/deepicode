@@ -41,6 +41,18 @@ DA-R0 基线与完成状态纠正
 | 7 | `DA-R6` TUI 双角色交互和状态栏真实接线 | P1 | DA-R5 | ✅ |
 | 8 | `DA-R7` 旧路径迁移、端到端测试与发布门禁 | P1 | DA-R6 | ✅ |
 
+代码审查后新增任务（2026-06-13）：
+
+| 顺序 | 任务 | 优先级 | 依赖 | 状态 |
+|---|---|---|---|---|
+| 9 | `DA-06` 引擎端集成 | P0 | DA-R7 | ⏳ |
+| 10 | `DA-R8` 执行拆分 | P0 | DA-06 | ⏳ |
+| 11 | `DA-R7b` ask_user 多路分发 | P0 | DA-R8 | ⏳ |
+| 12 | `DA-R9` 角色工具权限隔离 | P1 | DA-06 | ⏳ |
+| 13 | `DA-R10` Supervisor Plan 预览 | P2 | DA-R9 | ⏳ |
+| 14 | `DA-R11` Worker 死循环检测 | P2 | DA-R9 | ⏳ |
+| 15 | `DA-R12` 对话历史线程化 | P3 | DA-R10 | ⏳ |
+
 审查后的原任务状态：
 
 | 原任务 | 当前真实状态 | 不得宣称完成的原因 |
@@ -208,6 +220,58 @@ git diff --check
 - 更新 `DONE.md` 时必须记录真实接线位置、验证命令和剩余限制；未通过端到端门禁不得标记 `DA-R7` 完成。
 
 验收：通过本文件 1.3 门禁、上述端到端矩阵和真实双角色 smoke；旧单 Agent 主路径不再运行。
+
+---
+
+## 2.1 代码审查后修复计划（2026-06-13）
+
+基于代码审查报告，以下任务需要完成：
+
+### DA-06 (P0) — 引擎端集成
+
+- 将 `DualAgentRuntime` 接入 `engine.submit()`，实现 Supervisor→Worker 执行拆分
+- TUI Bridge 集成，确保双角色数据通过 engine 驱动而非本地 state
+- 完成后 `DualTabSystem` 和 `WorkflowStatusBar` 将显示真实数据
+
+### DA-R7 (P0) — ask_user 多路分发
+
+- 将 `ask_user` 请求路由到对应 Worker 的上下文
+- 在 `WorkflowDecision` 类型中实现 `"ask_user"` 决策流程
+
+### DA-R8 (P0) — 执行拆分
+
+- engine 先向 Supervisor 路由，取得 plan 后再交给 Worker 执行
+- 在 `engine.submit()` 中添加 Supervisor 预路由环节
+
+### DA-R9 (P1) — 角色工具权限隔离
+
+- 在 `DualAgentRuntime` 构造时按角色分配不同工具集
+- Supervisor 不应有 code exec / file ops 等重型工具
+
+### DA-R10 (P2) — Supervisor Plan 在 TUI 预览窗格展示
+
+- 复用 `WorkflowCoordinator.supervisorPlan` 展示计划
+- TUI 新增 plan 预览窗格
+
+### DA-R11 (P2) — Worker 死循环/未经批准退出时过渡到 blocked
+
+- 在 `AgentRuntime.submit()` 中添加重复工具调用模式检测
+- 当 Worker 陷入 loops 或未经 Supervisory approval 直接退出时自动 transition 到 blocked
+
+### DA-R12 (P3) — 对话历史线程化
+
+- `WorkflowCoordinator` 新增 `assignHistoryThread` 方法
+- 按 `workflowId` / `iteration` 过滤历史
+
+### Bug 修复 (P0-P3)
+
+| Bug | 优先级 | 描述 |
+|-----|--------|------|
+| Bug #1 | P0 | AgentRuntime.submit() 事件类型不匹配 |
+| Bug #2 | P1 | WorkflowPhase 类型不一致 |
+| Bug #3 | P1 | DualTabSystem 数据源孤立 |
+| Bug #4 | P3 | getState 快照一致性不足 |
+| Bug #5 | P3 | QuestionService.ask() 无超时机制 |
 
 ---
 

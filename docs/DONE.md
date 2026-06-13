@@ -4140,3 +4140,96 @@ DA-R 系列任务（DA-R0 到 DA-R7）已完成双角色运行时的修复、集
 ### 60.6 结论
 
 双角色运行时已完整集成并通过所有验证门禁。Worker 和 Supervisor 拥有独立的上下文、配置和能力边界，工作流协调器正确管理状态转换和轮次限制，Session 持久化安全可靠，TUI 正确接线双角色交互。
+
+---
+
+## §61 代码审查报告（2026-06-13）
+
+### 61.1 审查范围
+
+- `TODO.md` 逐项对照
+- `packages/`、`examples/`、`types/` 源代码 Bug 审查
+
+### 61.2 TODO 完成情况
+
+| 状态 | 数量 | 条目 |
+|------|------|------|
+| 已完成 | 5 | DA-01（类型部分）、DA-02、DA-03、DA-04、DA-05（组件部分） |
+| 部分完成 | 2 | DA-01（示例文件缺失）、DA-05（未与引擎连通） |
+| 未完成/未开始 | 7 | DA-01（示例文件）、DA-06、DA-R7~DA-R12 |
+
+**核心发现：** DA-01~DA-05 的基础数据结构、运行时类、TUI 组件已实现并有单元测试覆盖，但 **DA-06（引擎端集成）完全缺失**，导致整个双角色架构无法在实际对话流程中激活。
+
+### 61.3 Bug 列表
+
+#### Bug #1 — AgentRuntime.submit() 事件类型与客户端约定不匹配
+
+| 属性 | 描述 |
+|------|------|
+| **严重程度** | 中 |
+| **位置** | `packages/core/src/dual-agent-runtime/runtime.ts` 第 115-134 行 |
+| **问题** | `submit()` 方法中检查 `event.type === "text_delta"`、`"done"`、`"usage"`，但测试 mock 中使用的是 `{ type: "delta" }` 和 `{ type: "final" }`。实际运行会静默失败 |
+| **建议** | 统一事件类型契约，对齐 `engine.ts` 中 `runLoop` 使用的 `LoopEvent` 类型 |
+
+#### Bug #2 — DualTabSystem 与 WorkflowCoordinator 的 WorkflowPhase 类型不一致
+
+| 属性 | 描述 |
+|------|------|
+| **严重程度** | 中 |
+| **位置** | TUI: `WorkflowStatusBar.tsx`；Core: `workflow-coordinator/types.ts` |
+| **问题** | TUI 侧 `WorkflowPhase` 包含 `'continue'`、`'revise'`、`'approve'`、`'ask_user'`，但 core 侧为不同定义 |
+| **建议** | 统一 `WorkflowPhase` 定义 |
+
+#### Bug #3 — App.tsx 中 DualTabSystem 数据源孤立
+
+| 属性 | 描述 |
+|------|------|
+| **严重程度** | 高 |
+| **位置** | `packages/tui/src/App.tsx` 第 359-370 行 |
+| **问题** | `workerMessages`、`supervisorMessages`、`workflowState` 均通过 `useState` 初始化为空，且从未被更新 |
+| **建议** | 在 DA-06 集成完成前，通过 feature flag 控制 DualTabSystem 的显示 |
+
+#### Bug #4 — DualAgentRuntime 的 getState 快照一致性不足
+
+| 属性 | 描述 |
+|------|------|
+| **严重程度** | 低 |
+| **位置** | `packages/core/src/dual-agent-runtime/dual-runtime.ts` 第 93-94 行 |
+| **问题** | `getState()` 返回的 stats 和 messages 可能反映不同时刻的快照 |
+| **建议** | 使用统一的 snapshot() 方法一次性捕获状态快照 |
+
+#### Bug #5 — QuestionService.ask() 无超时机制
+
+| 属性 | 描述 |
+|------|------|
+| **严重程度** | 中 |
+| **位置** | `packages/core/src/question/service.ts` 第 55-63 行 |
+| **问题** | `ask()` 返回一个永不超时的 Promise，可能永久挂起 |
+| **建议** | 添加可配置的超时机制（如默认 120 秒） |
+
+### 61.4 未完成任务
+
+| 任务 | 描述 | 优先级 |
+|------|------|--------|
+| DA-06 | 引擎端集成 | P0 |
+| DA-R7 | ask_user 多路分发 | P0 |
+| DA-R8 | 执行拆分 | P0 |
+| DA-R9 | 角色工具权限隔离 | P1 |
+| DA-R10 | Supervisor Plan 预览 | P2 |
+| DA-R11 | Worker 死循环检测 | P2 |
+| DA-R12 | 对话历史线程化 | P3 |
+
+### 61.5 建议优先级
+
+| 优先级 | 任务 | 说明 |
+|--------|------|------|
+| P0 | DA-06 引擎集成 | 将 `DualAgentRuntime` 接入 `engine.submit()` |
+| P0 | 修复 Bug #1 | 事件类型不匹配会静默失败 |
+| P1 | 修复 Bug #2 | 统一 `WorkflowPhase` 类型定义 |
+| P1 | DA-R9 角色工具隔离 | 按角色分配不同工具集 |
+| P1 | DA-R7 ask_user 路由 | 将 question 请求路由到对应 Worker |
+| P2 | DA-R10 plan 预览 | 复用 `WorkflowCoordinator.supervisorPlan` |
+| P2 | DA-R11 循环检测 | 添加重复工具调用模式检测 |
+| P3 | DA-R12 历史线程化 | 新增 `assignHistoryThread` |
+| P3 | DA-01 示例文件 | 创建 `examples/dual-agent-basic.ts` |
+| P3 | Bug #5 超时 | 为 QuestionService 添加超时机制 |

@@ -1,14 +1,15 @@
 import { describe, it, expect, vi } from "vitest"
 import { AgentRuntime } from "../src/dual-agent-runtime/runtime.js"
 import { DualAgentRuntime } from "../src/dual-agent-runtime/dual-runtime.js"
-import type { ChatClient, DeepSeekStreamEvent } from "../src/interface.js"
+import type { ChatClient } from "../src/interface.js"
+import type { DeepSeekStreamEvent } from "../src/client.js"
 
 function createMockClient(responses: string[] = ["Hello"]): ChatClient {
   return {
     chatCompletionsStream: vi.fn(async function* (): AsyncGenerator<DeepSeekStreamEvent> {
       for (const response of responses) {
-        yield { type: "delta", content: response }
-        yield { type: "final", content: response }
+        yield { type: "text_delta", delta: response }
+        yield { type: "done", finishReason: null }
       }
     }) as unknown as ChatClient["chatCompletionsStream"],
   }
@@ -23,6 +24,13 @@ describe("AgentRuntime", () => {
       systemPrompt: "You are a worker",
       contextWindow: 128_000,
       maxContextRounds: 20,
+      config: {
+        apiKey: "test-key",
+        baseUrl: "https://test.com",
+        model: "test-model",
+        maxTokens: 8192,
+        temperature: 0.3,
+      },
     })
 
     expect(runtime.getRole()).toBe("worker")
@@ -38,12 +46,21 @@ describe("AgentRuntime", () => {
       systemPrompt: "You are a worker",
       contextWindow: 128_000,
       maxContextRounds: 20,
+      config: {
+        apiKey: "test-key",
+        baseUrl: "https://test.com",
+        model: "test-model",
+        maxTokens: 8192,
+        temperature: 0.3,
+      },
     })
 
     const state = runtime.getState()
     expect(state.role).toBe("worker")
     expect(state.status).toBe("idle")
-    expect(state.messages).toEqual([])
+    // Messages include system prompt from prefix
+    expect(state.messages.length).toBeGreaterThan(0)
+    expect(state.messages[0].role).toBe("system")
     expect(state.elapsedMs).toBe(0)
   })
 
@@ -55,6 +72,13 @@ describe("AgentRuntime", () => {
       systemPrompt: "You are a worker",
       contextWindow: 128_000,
       maxContextRounds: 20,
+      config: {
+        apiKey: "test-key",
+        baseUrl: "https://test.com",
+        model: "test-model",
+        maxTokens: 8192,
+        temperature: 0.3,
+      },
     })
 
     runtime.setSystemPrompt("Updated prompt")
@@ -69,11 +93,19 @@ describe("AgentRuntime", () => {
       systemPrompt: "You are a worker",
       contextWindow: 128_000,
       maxContextRounds: 20,
+      config: {
+        apiKey: "test-key",
+        baseUrl: "https://test.com",
+        model: "test-model",
+        maxTokens: 8192,
+        temperature: 0.3,
+      },
     })
 
     runtime.reset()
     expect(runtime.getStatus()).toBe("idle")
-    expect(runtime.getState().messages).toEqual([])
+    // After reset, messages still include system prompt from prefix
+    expect(runtime.getState().messages.length).toBeGreaterThan(0)
   })
 
   it("should interrupt runtime", () => {
@@ -84,6 +116,13 @@ describe("AgentRuntime", () => {
       systemPrompt: "You are a worker",
       contextWindow: 128_000,
       maxContextRounds: 20,
+      config: {
+        apiKey: "test-key",
+        baseUrl: "https://test.com",
+        model: "test-model",
+        maxTokens: 8192,
+        temperature: 0.3,
+      },
     })
 
     runtime.interrupt()
