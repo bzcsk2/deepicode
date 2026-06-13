@@ -40,6 +40,9 @@ import { LoadingIndicator } from './components/shared/LoadingIndicator.js';
 import { AgentGroupDisplay } from './components/agents/AgentGroupDisplay.js';
 import { WorkerActivityPanel } from './components/workers/WorkerActivityPanel.js';
 import { DialogManager } from './components/dialogs/DialogManager.js';
+// DA-R6: 双角色组件
+import { DualTabSystem, WorkflowStatusBar } from './components/workflow/index.js';
+import type { AgentRole, WorkflowPhase, WorkflowState } from './components/workflow/index.js';
 // TUI-FIX-20: 编排状态存储
 import { OrchestrationStore } from './store/orchestration-store.js';
 // TUI-FIX-30: 编排状态 hooks
@@ -407,6 +410,38 @@ export function App({ engine, config, pluginCount = 0, contentPackCount = 0, ass
   // TUI-FIX-40: Worker 详情面板状态
   const [showWorkerDetail, setShowWorkerDetail] = useState(false);
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | undefined>();
+
+  // DA-R6: 双角色状态管理
+  const [activeRole, setActiveRole] = useState<AgentRole>('worker');
+  const [workerMessages, setWorkerMessages] = useState<Array<{ role: AgentRole; content: string; ts: number }>>([]);
+  const [supervisorMessages, setSupervisorMessages] = useState<Array<{ role: AgentRole; content: string; ts: number }>>([]);
+  const [workerDraft, setWorkerDraft] = useState('');
+  const [supervisorDraft, setSupervisorDraft] = useState('');
+  const [workerScrollPosition, setWorkerScrollPosition] = useState(0);
+  const [supervisorScrollPosition, setSupervisorScrollPosition] = useState(0);
+
+  // DA-R6: Workflow 状态
+  const [workflowState, setWorkflowState] = useState<WorkflowState>({
+    phase: 'idle',
+    iteration: 0,
+    maxRounds: 9,
+    goal: '',
+    supervisorStatus: 'idle',
+    workerStatus: 'idle',
+  });
+
+  // DA-R6: 检查是否有覆盖层阻止 Tab 切换
+  const isOverlayActive = showAutocomplete
+    || showModelPicker
+    || showSessionPicker
+    || showAgentMenu
+    || showLangMenu
+    || showThinkingMenu
+    || showSkillModal
+    || showContextModal
+    || showHarnessMenu
+    || !!bridgeState.permissionPrompt
+    || !!bridgeState.questionPrompt;
 
   useEffect(() => {
     if (persistedAgent) {
@@ -850,6 +885,36 @@ export function App({ engine, config, pluginCount = 0, contentPackCount = 0, ass
       <OrchestrationSummaryFromStore terminalWidth={process.stdout.columns ?? 80} />
       {/* TUI-FIX-40: Agent 活动组（展开时显示详细进度） */}
       <AgentGroupDisplayFromStore terminalWidth={process.stdout.columns ?? 80} />
+      {/* DA-R6: 双角色 Tab 系统 */}
+      <DualTabSystem
+        activeRole={activeRole}
+        onRoleChange={(role) => {
+          // 仅在无覆盖层时允许切换
+          if (!isOverlayActive) {
+            setActiveRole(role);
+          }
+        }}
+        workerMessages={workerMessages}
+        supervisorMessages={supervisorMessages}
+        workerDraft={workerDraft}
+        supervisorDraft={supervisorDraft}
+        onDraftChange={(role, draft) => {
+          if (role === 'worker') {
+            setWorkerDraft(draft);
+          } else {
+            setSupervisorDraft(draft);
+          }
+        }}
+        onScrollPositionChange={(role, position) => {
+          if (role === 'worker') {
+            setWorkerScrollPosition(position);
+          } else {
+            setSupervisorScrollPosition(position);
+          }
+        }}
+        disabled={isOverlayActive}
+        width={process.stdout.columns ?? 80}
+      />
       <DeepiMessages
         timeline={timelineProp}
         scrollRef={scrollRef}
@@ -899,9 +964,15 @@ export function App({ engine, config, pluginCount = 0, contentPackCount = 0, ass
     </>
   );
 
-  // ---- 底部区域（固定定位）：命令自动补全、输入框、状态栏 ----
+  // ---- 底部区域（固定定位）：Workflow 状态栏、命令自动补全、输入框、状态栏 ----
   const bottomContent = (
     <Box flexDirection="column" width="100%">
+      {/* DA-R6: Workflow 状态栏 - 固定在输入框正上方 */}
+      <WorkflowStatusBar
+        workflow={workflowState}
+        activeRole={activeRole}
+        width={process.stdout.columns ?? 80}
+      />
       {showAutocomplete && (
         <CommandAutocomplete
           query={inputText}

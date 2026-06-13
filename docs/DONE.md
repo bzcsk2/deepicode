@@ -3791,6 +3791,7 @@ const ProjectHarnessConfigSchema = z.object({
 
 ### 55.7 保留限制
 
+- WorkflowCoordinator 转换逻辑需要 DA-R4 修复
 - DualSession 路径穿越需要 DA-R5 修复
 
 ---
@@ -3929,3 +3930,73 @@ const ProjectHarnessConfigSchema = z.object({
 - 路径穿越攻击被正确拒绝
 - 所有测试通过
 - 安全性验证覆盖完整
+
+---
+
+## §58 DA-R6：TUI 双角色交互与状态栏接线
+
+### 58.1 任务目标
+
+将 `DualTabSystem` 和 `WorkflowStatusBar` 真正接入 `App.tsx`，实现双角色交互和状态显示。
+
+### 58.2 实施内容
+
+#### 58.2.1 App.tsx 集成
+
+1. **组件导入**
+   - 导入 `DualTabSystem` 和 `WorkflowStatusBar`
+   - 导入相关类型：`AgentRole`、`WorkflowPhase`、`WorkflowState`
+
+2. **状态管理**
+   - 添加 `activeRole` 状态（worker/supervisor）
+   - 添加 `workerMessages` 和 `supervisorMessages` 独立消息列表
+   - 添加 `workerDraft` 和 `supervisorDraft` 独立草稿
+   - 添加 `workerScrollPosition` 和 `supervisorScrollPosition` 独立滚动位置
+   - 添加 `workflowState` 工作流状态
+
+3. **覆盖层检测**
+   - 添加 `isOverlayActive` 检测所有覆盖层状态
+   - 包括：autocomplete、modelPicker、sessionPicker、agentMenu、langMenu、thinkingMenu、skillModal、contextModal、harnessMenu、permissionPrompt、questionPrompt
+
+#### 58.2.2 WorkflowStatusBar 接线
+
+- 固定放置在输入框正上方（bottomContent 第一项）
+- 显示当前工作流阶段、迭代次数和目标
+- 支持双角色状态显示
+
+#### 58.2.3 DualTabSystem 接线
+
+- 放置在主内容区（scrollableContent）
+- 支持 Tab 键切换角色
+- 仅在无覆盖层时允许切换
+- 两角色分别保存消息、草稿和滚动位置
+
+### 58.3 实现的功能
+
+| 功能 | 实现方式 |
+|------|---------|
+| Tab 切换 | Tab 键切换 Worker/Supervisor |
+| 独立消息 | 两角色独立消息列表 |
+| 独立草稿 | 两角色独立草稿保存 |
+| 独立滚动 | 两角色独立滚动位置 |
+| 覆盖层禁用 | 覆盖层激活时禁用 Tab 切换 |
+| 状态栏固定 | WorkflowStatusBar 固定在输入框上方 |
+
+### 58.4 设计决策
+
+- **状态隔离**：Worker 和 Supervisor 状态完全独立
+- **覆盖层优先**：Question、Permission 和危险确认优先于 Tab 切换
+- **固定布局**：WorkflowStatusBar 固定在 bottomContent，不进入滚动区
+
+### 58.5 测试命令与真实结果
+
+- `bun run typecheck` — 通过（0 错误）
+- `bun test packages/core/__tests__/da-r0-baseline.test.ts` — **12 pass / 0 fail** ✅
+- `bun test packages/tui/__tests__/workflow-components.test.ts` — **22 pass / 0 fail** ✅
+
+### 58.6 验收
+
+- 用户可在 Worker 输出期间切换 Supervisor 对话
+- Tab 切换在覆盖层激活时被禁用
+- WorkflowStatusBar 正确显示工作流状态
+- 所有测试通过
