@@ -20,6 +20,7 @@ export interface PersistedResult {
   persistedPath: string
   originalChars: number
   previewChars: number
+  truncated: boolean
 }
 
 /** Per-session byte usage tracker (process-lifetime soft quota) */
@@ -74,7 +75,10 @@ export async function maybePersistResult(
   }
 
   const previewLen = config?.previewChars ?? DEFAULT_PREVIEW_CHARS
-  const preview = content.slice(0, previewLen)
+  const truncated = content.length > previewLen
+  const preview = truncated
+    ? content.slice(0, previewLen) + `\n\n[TRUNCATED: ${content.length} chars total, preview shows ${previewLen} chars]`
+    : content
 
   if (logger.isEnabled("info")) {
     logger.info("tool.result.overflow", { toolName, originalChars: content.length, previewChars: previewLen })
@@ -100,6 +104,13 @@ export async function maybePersistResult(
     return {
       content: preview,
       warning: `Session result quota exceeded (${used}/${quota} bytes). Result truncated to preview.`,
+      persisted: {
+        preview,
+        persistedPath: "",
+        originalChars: content.length,
+        previewChars: previewLen,
+        truncated: true,
+      },
     }
   }
 
@@ -118,6 +129,7 @@ export async function maybePersistResult(
       persistedPath: filePath,
       originalChars: content.length,
       previewChars: previewLen,
+      truncated,
     }
 
     if (logger.isEnabled("info")) {
@@ -139,6 +151,13 @@ export async function maybePersistResult(
     return {
       content: preview,
       warning,
+      persisted: {
+        preview,
+        persistedPath: "",
+        originalChars: content.length,
+        previewChars: previewLen,
+        truncated: true,
+      },
     }
   }
 }

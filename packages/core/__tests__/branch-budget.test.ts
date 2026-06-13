@@ -19,7 +19,7 @@ describe("BranchBudgetTracker - file edit", () => {
 
   it("未达到上限时 shouldBranchRecover 不触发", () => {
     const t = new BranchBudgetTracker()
-    for (let i = 0; i < DEFAULT_BRANCH_BUDGET.fileEditMax; i++) {
+    for (let i = 0; i < DEFAULT_BRANCH_BUDGET.fileEditMax - 1; i++) {
       t.recordFileEdit("src/a.ts")
     }
     expect(t.shouldBranchRecover().triggered).toBe(false)
@@ -54,16 +54,15 @@ describe("BranchBudgetTracker - command retry (仅失败计数)", () => {
     expect(t.inspect().commandRetries["npm test"]).toBe(3)
   })
 
-  it("超过 commandRetryMax 触发 command_retry recovery", () => {
+  it("达到 commandRetryMax 触发 command_retry recovery", () => {
     const t = new BranchBudgetTracker({ commandRetryMax: 2 })
-    t.recordFailedCommandAttempt("npm test")
     t.recordFailedCommandAttempt("npm test")
     expect(t.shouldBranchRecover().triggered).toBe(false)
     t.recordFailedCommandAttempt("npm test")
     const d = t.shouldBranchRecover()
     expect(d.triggered).toBe(true)
     expect(d.dimension).toBe("command_retry")
-    expect(d.currentCount).toBe(3)
+    expect(d.currentCount).toBe(2)
   })
 })
 

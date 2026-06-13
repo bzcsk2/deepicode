@@ -22,12 +22,13 @@ describe("P4: Result Overflow Persistence", () => {
     expect(r.warning).toBeUndefined()
   })
 
-  it("persists large content and returns preview", async () => {
+  it("persists large content and returns preview with truncation marker", async () => {
     const largeContent = "x".repeat(DEFAULT_MAX_RESULT_CHARS + 1000)
     const r = await maybePersistResult(largeContent, "session-1", "bash", { previewChars: 500 })
-    expect(r.content.length).toBe(500)
-    expect(r.content).toBe("x".repeat(500))
+    expect(r.content).toContain("[TRUNCATED:")
+    expect(r.content).toContain("500 chars]")
     expect(r.persisted).toBeDefined()
+    expect(r.persisted!.truncated).toBe(true)
     expect(r.persisted!.originalChars).toBe(largeContent.length)
     expect(r.persisted!.previewChars).toBe(500)
     expect(r.persisted!.persistedPath).toContain("session-1")
@@ -72,10 +73,12 @@ describe("P4: Result Overflow Persistence", () => {
     expect(r.persisted!.persistedPath).not.toContain("..")
   })
 
-  it("uses default preview length of 2000 chars", async () => {
+  it("uses default preview length of 2000 chars with truncation marker", async () => {
     const largeContent = "c".repeat(DEFAULT_MAX_RESULT_CHARS + 1000)
     const r = await maybePersistResult(largeContent, "session-5", "bash")
-    expect(r.content.length).toBe(2000)
+    expect(r.content).toContain("[TRUNCATED:")
+    expect(r.content).toContain("2000 chars]")
+    expect(r.persisted!.truncated).toBe(true)
   })
 
   it("returns warning on write failure", async () => {
@@ -130,9 +133,11 @@ describe("AUD-02: session quota and cleanup", () => {
     const content = "y".repeat(DEFAULT_MAX_RESULT_CHARS + 100)
     const smallQuota = { sessionQuotaBytes: 100, maxResultSizeChars: 10, previewChars: 10 }
     const r = await maybePersistResult(content, "quota-session", "bash", smallQuota)
-    expect(r.persisted).toBeUndefined()
+    expect(r.persisted).toBeDefined()
+    expect(r.persisted!.persistedPath).toBe("")
+    expect(r.persisted!.truncated).toBe(true)
     expect(r.warning).toContain("quota exceeded")
-    expect(r.content).toBe("y".repeat(10))
+    expect(r.content).toContain("[TRUNCATED:")
   })
 
   it("separate sessions have independent quotas", async () => {
@@ -156,7 +161,9 @@ describe("AUD-02: session quota and cleanup", () => {
     // Third persist should exceed 10000 quota
     const rA3 = await maybePersistResult(content, "session-A", "bash", quota)
     expect(rA3.warning).toContain("quota exceeded")
-    expect(rA3.persisted).toBeUndefined()
+    expect(rA3.persisted).toBeDefined()
+    expect(rA3.persisted!.persistedPath).toBe("")
+    expect(rA3.persisted!.truncated).toBe(true)
   })
 
   it("cleans up old files when exceeding max count", async () => {

@@ -6,6 +6,7 @@
  * Handles ask/reply lifecycle, session-approved rules, and cleanup.
  */
 
+import { randomUUID } from "node:crypto"
 import type {
   PermissionRequest,
   PermissionReply,
@@ -57,7 +58,7 @@ export class PermissionService implements PermissionServiceInterface {
     tool?: { toolCallId: string; toolName: string }
     parentSessionId?: string
   }): Promise<PermissionReply> {
-    const id = `perm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+    const id = `perm_${randomUUID()}`
     const request: PermissionRequest = {
       id,
       sessionId: input.sessionId,

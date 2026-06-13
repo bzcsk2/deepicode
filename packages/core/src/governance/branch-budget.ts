@@ -401,7 +401,7 @@ export class BranchBudgetTracker {
   ): { key: string; count: number } | null {
     let worst: { key: string; count: number } | null = null
     for (const [key, count] of map) {
-      if (count > limit && (!worst || count > worst.count)) {
+      if (count >= limit && (!worst || count > worst.count)) {
         worst = { key, count }
       }
     }
