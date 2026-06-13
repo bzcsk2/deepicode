@@ -8,7 +8,7 @@ import { FG, TONE } from './reasonix/tokens.js';
  *
  * 【组件职责】
  * 提供简单的单选菜单界面，用于：
- * - Agent 切换（build/plan）
+ * - Agent 切换（已废弃，请使用 Worker/Supervisor 模式）
  * - 语言切换（中文/English）
  * - 思考模式选择（off/low/medium/high/max）
  *

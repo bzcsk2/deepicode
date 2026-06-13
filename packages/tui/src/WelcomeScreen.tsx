@@ -45,7 +45,7 @@ interface WelcomeScreenProps {
  * 每行使用不同的渐变色，从蓝色过渡到紫色。
  */
 // 静态缓存：figlet 渲染结果在模块加载时计算一次，避免每次 WelcomeScreen 渲染时同步阻塞
-const DEEPREEF_ASCII = figlet.textSync('deepseek', { font: 'ANSI Regular' }).trim().split('\n');
+const DEEPREEF_ASCII = figlet.textSync('deepreef', { font: 'ANSI Regular' }).trim().split('\n');
 const DEEPREEF_COLORS: any[] = ['#4FA3F7', '#5C94F9', '#6985FA', '#7676FC', '#866FFB', '#9868F9', '#B064F6', '#C15FF3', '#CA5FF2'];
 
 function Title(): React.ReactElement {
@@ -167,11 +167,8 @@ export function WelcomeScreen({ model, provider, agent, thinkingMode, contextMod
           </Panel>
           {/* 组件状态面板 */}
           <Panel title="组件状态">
-            <Row label="执行插件:" value={String(pluginCount)} />
-            <Row label="内容包:" value={String(contentPackCount)} />
+            <Row label="插件:" value={String(pluginCount)} />
             <Row label="技能:" value={String(skillCount)} />
-            <Row label="代理:" value={String(assetCounts.agents)} />
-            <Row label="规则:" value={String(assetCounts.rules)} />
             <Row label="MCP:" value={String(assetCounts.mcp)} />
             {diagnosticCounts.warnings > 0 || diagnosticCounts.errors > 0 ? (
               <Row label="诊断:" value={`${diagnosticCounts.errors}错 ${diagnosticCounts.warnings}警`} />

@@ -116,7 +116,10 @@ export class ReasonixEngine implements CoreEngine {
 
 
 
-  /** 当前会话启用的技能内容，会附加到 system prompt */
+  /**
+   * @deprecated 使用 AgentProfile 中的 thinking 配置代替
+   * 当前会话启用的技能内容，会附加到 system prompt
+   */
   private activeSkills: Array<{ name: string; description: string; content: string }> = []
 
   private contextPolicy: ContextPolicy = { ...DEFAULT_CONTEXT_POLICY }
@@ -143,7 +146,10 @@ export class ReasonixEngine implements CoreEngine {
   /** TUI-FIX-10: 编排事件发射回调（供 TUI Bridge 消费） */
   private emitOrchestration?: (event: LoopEvent) => void
 
-  /** ADV-HAR-01: 当前会话的 Harness 严格度（可通过 /harness 切换） */
+  /**
+   * @deprecated 使用 AgentProfile 中的 harness 配置代替
+   * ADV-HAR-01: 当前会话的 Harness 严格度（可通过 /harness 切换）
+   */
   private sessionStrictness?: HarnessStrictness
   /** ADV-HAR-02: 当前 submit 解析后的不可变策略（每次 submit 刷新） */
   private effectivePolicy: EffectiveHarnessPolicy | null = null
@@ -352,7 +358,10 @@ export class ReasonixEngine implements CoreEngine {
     this.ctx.prefix.build(prompt)
   }
 
-  /** 更新当前会话启用的技能列表 */
+  /**
+   * @deprecated 使用 AgentProfile 中的 skills 配置代替
+   * 更新当前会话启用的技能列表
+   */
   setActiveSkills(skills: Array<{ name: string; description: string; content: string }>): void {
     this.activeSkills = skills.map(skill => ({
       name: skill.name,
@@ -361,7 +370,10 @@ export class ReasonixEngine implements CoreEngine {
     }))
   }
 
-  /** 获取当前会话启用的技能列表 */
+  /**
+   * @deprecated 使用 AgentProfile 中的 skills 配置代替
+   * 获取当前会话启用的技能列表
+   */
   getActiveSkills(): Array<{ name: string; description: string; content: string }> {
     return this.activeSkills.map(skill => ({ ...skill }))
   }
@@ -530,12 +542,18 @@ export class ReasonixEngine implements CoreEngine {
     return this.currentAgent
   }
 
-  /** ADV-HAR-01: 设置会话级 Harness 严格度 */
+  /**
+   * @deprecated 使用 AgentProfile 中的 harness 配置代替
+   * ADV-HAR-01: 设置会话级 Harness 严格度
+   */
   setHarnessStrictness(strictness: HarnessStrictness): void {
     this.sessionStrictness = strictness
   }
 
-  /** 设置推理档位（off / open / high），传递给 DeepSeek thinking API */
+  /**
+   * @deprecated 使用 AgentProfile 中的 thinking 配置代替
+   * 设置推理档位（off / open / high），传递给 DeepSeek thinking API
+   */
   private thinkingMode: ThinkingMode = "off"
   setThinkingMode(mode: ThinkingMode): void {
     this.thinkingMode = mode

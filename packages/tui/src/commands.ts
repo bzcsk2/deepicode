@@ -136,6 +136,9 @@ export function buildHelpText(activeAgent: string, cmdStrings: HelpCommandString
     agentList,
     "",
     `Current: ${currentLabel}`,
+    "",
+    "Note: /agent build|plan commands are deprecated.",
+    "Use dual-role mode with Worker/Supervisor instead.",
   ].join("\n")
 }
 

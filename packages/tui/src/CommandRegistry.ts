@@ -11,7 +11,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: '/help', description: 'show help' },
   { name: '/model', description: 'switch provider/model' },
   { name: '/sessions', description: 'browse past sessions' },
-  { name: '/agent', description: 'switch agent' },
+  { name: '/agent', description: 'switch agent (deprecated, use dual-role mode)' },
   { name: '/skill', description: 'list loaded skills' },
   { name: '/lang', description: 'switch language' },
   { name: '/status', description: 'show runtime status' },

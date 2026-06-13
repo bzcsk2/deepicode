@@ -323,7 +323,7 @@ const MessageBlock = memo(function MessageBlock({
  * DeepiMessages
  *
  * 渲染消息时间线。
- * 注意：已移除 React.memo（鼠标跟踪已关闭），确保 reasoning（思考内容）流式更新能立即反映到界面。
+ * 注意：已移除 React.memo，确保 reasoning（思考内容）流式更新能立即反映到界面。
  */
 export function DeepiMessages({
   timeline: timelineProp,

@@ -45,7 +45,7 @@ export const en: Strings = {
   cmdHelp: 'show help',
   cmdModel: 'switch provider/model',
   cmdSessions: 'browse past sessions',
-  cmdAgent: 'switch agent',
+  cmdAgent: 'switch agent (deprecated, use dual-role mode)',
   cmdSkill: 'manage skills',
   cmdLang: 'switch language',
   cmdStatus: 'show runtime status',

@@ -17,7 +17,7 @@ import type { DeepiPromptInputHandle } from './DeepiPromptInput.js';
 import { FullscreenLayout } from './FullscreenLayout.js';
 import { useMessageScroll } from './useMessageScroll.js';
 import { WelcomeScreen } from './WelcomeScreen.js';
-import { isFullscreenEnvEnabled } from './fullscreen.js';
+import { isFullscreenEnvEnabled, isMouseTrackingEnabled } from './fullscreen.js';
 import { ModelPicker } from './ModelPicker.js';
 import { SessionPicker } from './SessionPicker.js';
 import { CommandAutocomplete } from './CommandAutocomplete.js';
@@ -962,8 +962,8 @@ export function App({ engine, config, pluginCount = 0, contentPackCount = 0, ass
       <BridgeRuntimeProvider runtime={bridgeRuntime}>
         <TranscriptProvider reader={transcriptReader}>
           <OrchestrationStoreProvider store={orchestrationStore}>
-          {/* 禁用 mouseTracking，让终端原生支持文本选取（用户明确不需要鼠标交互） */}
-          <AlternateScreen mouseTracking={false}>
+          {/* Alternate Screen 没有原生 scrollback；鼠标跟踪用于驱动消息区 ScrollBox。 */}
+          <AlternateScreen mouseTracking={isMouseTrackingEnabled()}>
             <FullscreenLayout
               scrollRef={scrollRef}
               scrollable={scrollableContent}

@@ -1,4 +1,69 @@
-export { ReasonixEngine } from "./engine.js"
+export {
+  CapabilityCatalog,
+  RoleCapabilityView,
+} from "./capability-catalog/index.js"
+export type {
+  Capability,
+  CapabilitySource,
+  CapabilityCatalogSnapshot,
+  RoleCapabilityViewOptions,
+} from "./capability-catalog/index.js"
+
+export {
+  AgentRuntime,
+  DualAgentRuntime,
+} from "./dual-agent-runtime/index.js"
+export type {
+  AgentRuntimeStatus,
+  AgentRuntimeState,
+  AgentRuntimeOptions,
+  DualAgentRuntimeConfig,
+  DualAgentRuntimeOptions,
+  WorkflowState,
+  WorkflowPhase,
+  SendToOptions,
+  InterruptRoleOptions,
+} from "./dual-agent-runtime/index.js"
+
+export {
+  WorkflowCoordinator,
+} from "./workflow-coordinator/index.js"
+export type {
+  WorkflowPhase as WorkflowCoordinatorPhase,
+  WorkflowDecision,
+  WorkflowConfig,
+  WorkflowLoopState,
+  WorkflowEvidence,
+  WorkflowEvidenceToolEntry,
+  WorkflowEvidenceFailureEntry,
+  WorkflowEvidenceVerification,
+  WorkflowSupervisorAdvice,
+  WorkflowCheckpoint,
+  StartWorkflowOptions,
+  WorkflowEvent,
+  WorkflowCoordinatorOptions,
+} from "./workflow-coordinator/index.js"
+export { DEFAULT_WORKFLOW_CONFIG } from "./workflow-coordinator/index.js"
+
+export {
+  DualSession,
+  DualSessionStore,
+} from "./dual-session/index.js"
+export type {
+  DualSessionConfig,
+  RoleSessionState,
+  DualSessionSnapshot,
+  AdviceHistoryEntry,
+  SessionCheckpoint,
+  DualSessionOptions,
+  DualSessionOptionsExtended,
+  SessionStoreOptions,
+} from "./dual-session/index.js"
+export { SESSION_VERSION } from "./dual-session/index.js"
+
+export {
+  ReasonixEngine,
+} from "./engine.js"
 export type { ContextPolicyStatus } from "./engine.js"
 export type { ContextReductionMode, ContextReductionResult } from "./context/manager.js"
 export type { ContextPolicy, ContextPolicyMode } from "./context/policy.js"

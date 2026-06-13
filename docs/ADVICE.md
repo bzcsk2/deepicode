@@ -1,8 +1,35 @@
 # Deepreef 开发审核意见与下一步动作
 
-> 更新日期：2026-06-12
+> 更新日期：2026-06-13
 > 本文用途：指导开发 Agent 完成下一阶段开发与验收。
-> 本轮范围：Harness 三档严格度、融合功能运行时接线、此前 TODO 验收问题。TUI 暂不在本轮处理范围内。
+> 当前最高优先级：永久 Worker/Supervisor 双角色配置、固定 Workflow 和 TUI Tab 双向沟通。此前 Harness 审核意见仍有效，但必须作为角色配置的一部分接入，不能继续保留全局单例状态。
+
+---
+
+## 零、双角色架构执行意见
+
+当前 `build/plan` 是同一个 `ReasonixEngine.currentAgent` 上的互斥模式，不能满足目标。下一阶段必须按 `TODO.md` 的 `DA-00 → DA-60` 顺序升级，不得使用一次性 Subagent、`AgentTool` 或两个模式快速切换伪装成双 Agent。
+
+硬性决策：
+
+1. `build` 迁移为 `worker`，`plan` 迁移为 `supervisor`；旧名称只做读取迁移。
+2. Worker 与 Supervisor 都是长期存在的 AgentRuntime，拥有独立模型、Harness、Thinking、上下文、能力配置和消息历史。
+3. PluginRuntime、McpHost 和底层连接共享加载；通过 `CapabilityCatalog + RoleCapabilityView` 分别暴露工具、Plugin、MCP 和 Skill，禁止复制两套运行时。
+4. Worker 是唯一写入和工具执行者。Supervisor 只负责计划、检查和结构化 Advice，配置错误也不能获得写能力。
+5. 固定 Workflow 为 `Supervisor analyse/plan → Worker do/report/verify → Supervisor check`，默认最多 9 轮。
+6. 完成必须同时满足 Worker 报告、Verification Gate 和 Supervisor approve；Supervisor 不可用时由用户明确决定是否降级。
+7. TUI `Tab` 只在无弹窗、无 Question/Permission、无自动补全时切换聊天目标；两个角色分别保留草稿、滚动位置和历史。
+8. 不允许角色配置自动切换 Provider、模型或推理强度；配置修改从对应角色下一次调用生效。
+9. TUI Workflow 状态栏必须固定在输入框正上方，作为底部固定交互区的一部分；使用指定的两行布局：第一行 `DeepReef + Workflow 阶段链 + loops`，第二行单张 `Supervisor | Worker | goal` 三段卡片。不得放在屏幕顶部、滚动消息区或改成三张独立状态卡。
+
+首批开发只能领取：
+
+```text
+DA-00 永久双角色配置与迁移
+DA-10 CapabilityCatalog 与 RoleCapabilityView
+```
+
+在 `DA-20` 完成前，不得宣称已经存在两个长期 Agent；在 `DA-30` 完成前，不得宣称已经实现固定双 Agent Workflow；在 `DA-50` 完成前，不得宣称 Tab 可以与两个 Agent 独立沟通。
 
 ---
 

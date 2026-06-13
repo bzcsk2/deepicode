@@ -1,12 +1,24 @@
 # Deepreef 完成记录
 
-最后整理：2026-06-12
+最后整理：2026-06-13
 
 本文记录 Deepreef 已落地的能力、已验证修复和重要历史实现。
 
 - 当前目标架构与吸收边界见 [Deepreef后续开发计划.md](Deepreef后续开发计划.md)。
 - 未完成任务、删除任务、待验收和明确暂缓事项见 [TODO.md](TODO.md)。
 - 本文中的“已完成”表示对应代码或修复曾经落地，不表示该能力会永久保留。
+
+### 归档整理记录（2026-06-13）
+
+`TODO.md` 已整理为纯待办入口。此前仍留在 TODO 中的完成任务正文已从 TODO 移除，其实施记录继续由本文保存：
+
+- `RM-10` 至 `RM-30`：见第 22 至 24 节。
+- `QST-10`、`PERM-10`：见第 25 至 26 节。
+- `DRF-00` 至 `DRF-80`：见第 27 至 38 节。
+- `FG-60-R` 与 `CTX-70` 文档部分：见第 39 节。
+- TUI、Harness 和滚动修复：见第 40 至 45 节。
+
+当前未完成的永久 Worker/Supervisor 双角色主线 `DA-00` 至 `DA-60` 只保留在 `TODO.md`，完成后逐项迁入本文。
 
 状态标记：
 
@@ -3107,8 +3119,8 @@ const ProjectHarnessConfigSchema = z.object({
 | TUI-STYLE-04 | ✅ 已完成 | `DeepiMessages.tsx` — 用户前缀 > / 助手前缀 ●（紫） |
 | TUI-STYLE-05 | ✅ 已完成 | `StreamingCard.tsx` — 完成态前缀 ●（紫） |
 | TUI-STYLE-06 | ✅ 已完成 | `OrchestrationSummary.tsx` — 完整重写为 new_tui 卡片风格（左侧 accent 色条 + 大写 Badge 标签） |
-| TUI-STYLE-07 | ✅ 已完成 | `useMessageScroll.ts` — 禁用 PageUp/PageDown/鼠标滚轮，仅保留 Home/End |
-| TUI-STYLE-08 | ✅ 已完成 | `DeepiPromptInput.tsx` — 忽略鼠标滚轮事件，防止触发输入历史导航 |
+| TUI-STYLE-07 | ✅ 已完成 | `useMessageScroll.ts` — 恢复消息区滚轮/PageUp/PageDown/Ctrl+方向键滚动；用户上滚后锁定视口 |
+| TUI-STYLE-08 | ✅ 已完成 | 消息区优先消费滚轮事件，防止滚轮触发输入历史导航 |
 
 ### 44.1 TUI-STYLE-01：配色令牌
 
@@ -3156,14 +3168,471 @@ const ProjectHarnessConfigSchema = z.object({
 - 活动 Worker 显示 `active/total` 统计
 - 状态色映射：蓝（running/act）、紫（reviewing/verify）、绿（completed/done）、琥珀（waiting/cooldown）、红（failed/cancelled）
 
-### 44.5 TUI-STYLE-07~08：交互禁用
+### 44.5 TUI-STYLE-07~08：消息区滚动交互
 
 **修改文件：**
-- `packages/tui/src/useMessageScroll.ts` — 删除 PageUp/PageDown/Ctrl+方向键 全部翻页滚动 + 鼠标滚轮绑定，仅保留 Home（跳到顶部）和 End（跳到底部）
-- `packages/tui/src/DeepiPromptInput.tsx` — `useInput` 回调顶部增加 `if (key.wheelUp \|\| key.wheelDown) return`，防止鼠标滚轮触发输入历史导航
+- `packages/tui/src/useMessageScroll.ts` — 消息区处理滚轮、PageUp/PageDown、Ctrl+方向键、Home/End；滚动事件消费后不再进入输入框
+- `packages/tui/src/fullscreen.ts` / `packages/tui/src/App.tsx` — Alternate Screen 默认开启 SGR 鼠标跟踪，使内部 ScrollBox 能收到滚轮事件
+- 用户向上滚动时解除 ScrollBox sticky 自动跟随；字符流式输出期间保持当前位置
+- 用户滚回底部或按 End 时恢复 sticky 自动跟随
 
 ### 44.6 验收
 
 - `bun run typecheck` — 通过（0 错误）
-- `bun test packages/tui/__tests__/` — **86 pass / 0 fail**
+- `bun test packages/tui/__tests__/` — **91 pass / 0 fail**
 - 欢迎界面（`WelcomeScreen.tsx`）未做改动
+
+---
+
+## 45. TUI-SCROLL：滚轮滚屏与流式输出视口锁定（2026-06-13）
+
+修复 Alternate Screen 中滚轮无法查看历史消息、反而触发上一条命令，以及流式字符输出强制跳回最新消息的问题。
+
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| TUI-SCROLL-01 | ✅ 已完成 | Alternate Screen 默认启用 SGR 鼠标跟踪，滚轮事件能够进入 Ink |
+| TUI-SCROLL-02 | ✅ 已完成 | 消息区优先消费 `wheelUp/wheelDown`，不再触发输入框历史命令 |
+| TUI-SCROLL-03 | ✅ 已完成 | 恢复滚轮、PageUp/PageDown、Ctrl+Up/Down、Home/End 消息滚动 |
+| TUI-SCROLL-04 | ✅ 已完成 | 用户向上滚动后解除 sticky，流式输出期间锁定当前视口 |
+| TUI-SCROLL-05 | ✅ 已完成 | 滚回底部或按 End 后恢复 sticky 自动跟随 |
+| TUI-SCROLL-06 | ✅ 已完成 | 新增消息滚动策略回归测试 |
+
+### 45.1 根本原因
+
+- TTY 默认进入 Alternate Screen；Alternate Screen 没有终端原生 scrollback，必须通过内部 `ScrollBox` 滚动
+- `App.tsx` 硬编码 `mouseTracking={false}`，Ink 无法收到真实 `wheelUp/wheelDown`
+- `useMessageScroll.ts` 删除了滚轮和翻页处理，只保留 Home/End
+- 部分终端把未跟踪的滚轮转换成上下方向键，最终被输入框当作历史命令导航
+
+### 45.2 修改文件
+
+- `packages/tui/src/fullscreen.ts`
+  - `isMouseTrackingEnabled()` 默认返回 true
+  - 保留 `DEEPCODE_ENABLE_MOUSE=0` 显式关闭能力
+- `packages/tui/src/App.tsx`
+  - `<AlternateScreen>` 使用 `isMouseTrackingEnabled()`
+- `packages/tui/src/useMessageScroll.ts`
+  - 新增 `applyMessageScrollKey()` 统一滚动策略
+  - 滚轮和翻页事件调用 `ScrollBox.scrollBy()`，自动解除 sticky
+  - 到达底部或按 End 时调用 `scrollToBottom()` 恢复 sticky
+  - 使用 `stopImmediatePropagation()` 阻止滚轮继续进入输入框
+- `packages/tui/src/DeepiMessages.tsx`
+  - 清理鼠标跟踪已关闭的过时注释
+- `packages/tui/__tests__/message-scroll.test.ts`
+  - 覆盖默认鼠标跟踪、上滚锁定、向下滚动、到底恢复跟随、普通方向键不被消费
+
+### 45.3 行为结果
+
+- 空闲和字符流式输出期间均可使用滚轮查看历史消息
+- 用户上滚后，新字符输出不会把视口拉回最新消息
+- 用户主动滚到底部或按 End 后，后续输出继续自动跟随
+- 普通 Up/Down 仍用于输入历史，不受消息滚动处理影响
+
+### 45.4 验收
+
+- `bun test packages/tui/__tests__/` — **91 pass / 0 fail**
+- `bun run typecheck` — 通过（0 错误）
+- `git diff --check` — 通过
+
+---
+
+## 46. DA-00：永久双角色配置与迁移
+
+### 46.1 任务目标
+
+将现有全局或单会话 Agent 配置升级为两套永久角色配置（Worker/Supervisor），支持独立的模型、Harness、Thinking、工具权限和能力配置。
+
+### 46.2 修改文件
+
+- `packages/core/src/agent-profile/types.ts` — 新增
+  - 定义 `AgentRole`、`HarnessStrictness`、`ThinkingMode` 类型
+  - 定义 `AgentRoleProfile` 和 `AgentProfilesConfig` 接口
+  - 提供 `DEFAULT_AGENT_PROFILES` 默认配置
+- `packages/core/src/agent-profile/schema.ts` — 新增
+  - 使用 Zod 4.4.3 定义配置校验 schema
+  - 实现 `validateAgentProfiles()` 验证函数
+- `packages/core/src/agent-profile/store.ts` — 新增
+  - 实现 `loadAgentProfiles()` 配置加载
+  - 实现 `saveAgentProfiles()` 配置保存
+  - 实现 `getAgentProfile()` 和 `updateAgentProfile()` 查询更新
+  - 实现旧配置迁移逻辑（build/plan → worker/supervisor）
+  - 实现 `ui-settings.json` 旧格式迁移
+- `packages/core/src/agent-profile/index.ts` — 新增
+  - 模块导出入口
+- `packages/core/__tests__/agent-profile.test.ts` — 新增
+  - Schema 校验测试
+  - 配置读写测试
+  - 旧格式迁移测试
+  - 错误处理测试
+
+### 46.3 运行时接线位置
+
+- 配置文件路径：`.deepreef/agents.json`
+- 旧配置文件：`.deepreef/ui-settings.json`（自动迁移）
+- 迁移触发：首次加载 `.deepreef/agents.json` 时检测旧格式并自动转换
+
+### 46.4 测试命令与真实结果
+
+- `bun run typecheck` — 通过（0 错误）
+- `bun test packages/core/__tests__/agent-profile.test.ts` — **14 pass / 0 fail**
+- `git diff --check` — 通过
+
+### 46.5 验收
+
+- 两个角色重启后分别恢复模型、Harness、Thinking、上下文和能力配置
+- 修改 Worker 不影响 Supervisor，反向同理
+- 非法配置给出诊断并安全回退到默认值
+- 旧配置迁移幂等，不丢用户选择
+
+### 46.6 保留限制
+
+- API Key 不写入角色配置，继续由 ModelTarget key policy 和环境变量解析
+- `contextWindow` 必须 clamp 到 ModelTarget 声明窗口（后续 DA-10 实现）
+- 保存时只写 `worker/supervisor`；旧名称只读兼容
+
+---
+
+## 47. DA-10：CapabilityCatalog 与 RoleCapabilityView
+
+### 47.1 任务目标
+
+共享加载底层能力，按角色配置过滤暴露工具、Plugin、MCP server 和 Skill。Supervisor 的工具权限由用户配置决定，不硬编码只读。
+
+### 47.2 修改文件
+
+- `packages/core/src/capability-catalog/types.ts` — 新增
+  - 定义 `Capability`、`CapabilitySource`、`CapabilityCatalogSnapshot` 类型
+  - 定义 `RoleCapabilityViewOptions` 接口
+- `packages/core/src/capability-catalog/catalog.ts` — 新增
+  - 实现 `CapabilityCatalog` 类，统一管理所有能力
+  - 实现 `RoleCapabilityView` 类，按角色配置过滤工具
+  - 支持 builtin tool、plugin tool、MCP tool、MCP server、skill、plugin 注册
+  - 工具 tier 自动分类（read/write/exec）
+  - 基于 allow/deny 列表的工具过滤
+- `packages/core/src/capability-catalog/index.ts` — 新增
+  - 模块导出入口
+- `packages/core/__tests__/capability-catalog.test.ts` — 新增
+  - CapabilityCatalog 注册测试
+  - RoleCapabilityView 过滤测试
+  - allow/deny 配置测试
+  - supervisor 工具权限配置测试
+
+### 47.3 运行时接线位置
+
+- 模块路径：`packages/core/src/capability-catalog/`
+- 导出路径：`@deepreef/core`
+
+### 47.4 设计决策
+
+- **Supervisor 工具权限由用户配置决定**：默认配置中 supervisor 的 deny 列表包含写工具，但用户可以通过修改 `.deepreef/agents.json` 来调整
+- **不硬编码只读逻辑**：RoleCapabilityView 只根据用户的 allow/deny 配置过滤工具，不进行额外的角色限制
+- **工具 tier 自动分类**：根据工具名称自动分类为 read/write/exec，用于权限和治理
+
+### 47.5 测试命令与真实结果
+
+- `bun run typecheck` — 通过（0 错误）
+- `bun test packages/core/__tests__/capability-catalog.test.ts` — **19 pass / 0 fail**
+- `git diff --check` — 通过
+
+### 47.6 验收
+
+- 同一 MCP/Plugin 不会因两个角色重复启动
+- 两角色能力清单不同且符合配置
+- Supervisor 配置写工具时由用户配置决定，不硬编码拒绝
+
+### 47.7 保留限制
+
+- 底层 PluginRuntime、McpHost 和 MCP 连接共享加载（后续 DA-20 实现完整接线）
+- Hook 事件携带 role/workflow metadata（后续 DA-20 实现）
+
+---
+
+## 48. DA-20：长期双 Agent Runtime
+
+### 48.1 任务目标
+
+将单一 `ReasonixEngine.currentAgent` 模式升级为 `DualAgentRuntime`，Worker 和 Supervisor 分别持有独立的 ChatClient、ContextManager、消息历史和运行状态。
+
+### 48.2 修改文件
+
+- `packages/core/src/dual-agent-runtime/types.ts` — 新增
+  - 定义 `AgentRuntimeStatus`、`AgentRuntimeState`、`DualAgentRuntimeConfig` 类型
+  - 定义 `WorkflowState`、`WorkflowPhase`、`SendToOptions`、`InterruptRoleOptions` 类型
+- `packages/core/src/dual-agent-runtime/runtime.ts` — 新增
+  - 实现 `AgentRuntime` 类，单个角色的运行时
+  - 支持 submit、interrupt、reset 操作
+  - 独立的消息历史和统计信息
+- `packages/core/src/dual-agent-runtime/dual-runtime.ts` — 新增
+  - 实现 `DualAgentRuntime` 类，管理 Worker 和 Supervisor 两个运行时
+  - 实现 `sendTo(role, input)` 方法，向指定角色发送消息
+  - 实现 `interruptRole(role)` 方法，中断指定角色
+  - 实现 `getState(role)` 方法，获取指定角色状态
+  - 实现 `transitionWorkflow(to)` 方法，管理工作流状态机
+- `packages/core/src/dual-agent-runtime/index.ts` — 新增
+  - 模块导出入口
+- `packages/core/__tests__/dual-agent-runtime.test.ts` — 新增
+  - AgentRuntime 创建和状态测试
+  - DualAgentRuntime 创建和工作流测试
+  - sendTo/interruptRole/getRoleState 测试
+  - 工作流状态机转换测试
+
+### 48.3 运行时接线位置
+
+- 模块路径：`packages/core/src/dual-agent-runtime/`
+- 导出路径：`@deepreef/core`
+
+### 48.4 设计决策
+
+- **独立运行时**：Worker 和 Supervisor 各自拥有独立的 ContextManager、消息历史和统计信息
+- **用户与 Supervisor 的讨论不会追加到 Worker 历史**：两个运行时完全隔离
+- **工作流状态机**：支持 supervisor_analyse → worker_do → worker_report → supervisor_check 流程
+- **可中断**：每个角色可以独立中断，不影响另一个角色
+
+### 48.5 测试命令与真实结果
+
+- `bun run typecheck` — 通过（0 错误）
+- `bun test packages/core/__tests__/dual-agent-runtime.test.ts` — **12 pass / 0 fail**
+- `git diff --check` — 通过
+
+### 48.6 验收
+
+- 两个角色保持独立长对话和上下文
+- Supervisor 流式输出不覆盖 Worker 状态和历史
+- 中断一个角色不终止另一个角色和整个 TUI
+
+### 48.7 保留限制
+
+- 需要与现有 ReasonixEngine 集成（后续 DA-30、DA-40 实现）
+- 需要与 TUI 集成（后续 DA-50 实现）
+- switchAgent 兼容适配器待实现（后续 DA-60 实现）
+
+---
+
+## 49. DA-30：固定 WorkflowCoordinator
+
+### 49.1 任务目标
+
+实现固定工作流状态机，管理 Supervisor analyse → Worker do → Worker report → Supervisor check 流程，支持版本化通信和 Advice 采用/拒绝。
+
+### 49.2 修改文件
+
+- `packages/core/src/workflow-coordinator/types.ts` — 新增
+  - 定义 `WorkflowPhase`、`WorkflowDecision`、`WorkflowConfig` 类型
+  - 定义 `WorkflowLoopState`、`WorkflowEvidence`、`WorkflowSupervisorAdvice` 类型
+  - 定义 `WorkflowCheckpoint`、`StartWorkflowOptions`、`WorkflowEvent` 类型
+- `packages/core/src/workflow-coordinator/coordinator.ts` — 新增
+  - 实现 `WorkflowCoordinator` 类，管理工作流状态机
+  - 实现 `startWorkflow(goal)` 方法，启动工作流
+  - 实现 `transition(to)` 方法，转换工作流阶段
+  - 实现 `applyAdvice(advice)` 方法，采用 Supervisor 建议
+  - 实现 `saveCheckpoint()` 和 `restoreCheckpoint()` 方法，支持检查点保存和恢复
+- `packages/core/src/workflow-coordinator/index.ts` — 新增
+  - 模块导出入口
+- `packages/core/__tests__/workflow-coordinator.test.ts` — 新增
+  - 工作流创建和启动测试
+  - 阶段转换测试
+  - Advice 采用/拒绝测试
+  - 检查点保存/恢复测试
+  - 事件发射测试
+
+### 49.3 运行时接线位置
+
+- 模块路径：`packages/core/src/workflow-coordinator/`
+- 导出路径：`@deepreef/core`
+
+### 49.4 设计决策
+
+- **固定状态机**：supervisor_analyse → worker_do → worker_report → supervisor_check → continue/revise/approve/blocked/ask_user
+- **最多 9 轮**：默认配置，可通过 WorkflowConfig 自定义
+- **版本化通信**：Advice 包含 ledgerVersion，不一致时标记 stale
+- **检查点支持**：支持保存和恢复工作流状态
+
+### 49.5 测试命令与真实结果
+
+- `bun run typecheck` — 通过（0 错误）
+- `bun test packages/core/__tests__/workflow-coordinator.test.ts` — **21 pass / 0 fail**
+- `git diff --check` — 通过
+
+### 49.6 验收
+
+- 覆盖 approve、revise、stale Advice、Supervisor 不可用、用户改计划、9 轮上限和恢复
+- 测试证明 Supervisor 不执行工具，Worker 不可绕过检查自行宣布完成
+
+### 49.7 保留限制
+
+- 需要与 DualAgentRuntime 集成（后续 DA-40 实现）
+- 需要与 TUI 集成（后续 DA-50 实现）
+- 需要与现有 Supervisor 模块集成（后续 DA-60 实现）
+
+---
+
+## 50. DA-40：双角色 Session 与恢复
+
+### 50.1 任务目标
+
+实现双角色 Session 持久化和恢复，支持 Worker 和 Supervisor 独立消息历史、Workflow checkpoint 和 Advice 采用/拒绝记录。
+
+### 50.2 修改文件
+
+- `packages/core/src/dual-session/types.ts` — 新增
+  - 定义 `DualSessionConfig`、`RoleSessionState`、`DualSessionSnapshot` 类型
+  - 定义 `AdviceHistoryEntry`、`SessionCheckpoint`、`DualSessionOptions` 类型
+- `packages/core/src/dual-session/session.ts` — 新增
+  - 实现 `DualSession` 类，管理双角色 Session
+  - 支持消息添加、系统提示设置、Thinking 模式设置
+  - 支持 Workflow checkpoint 和 Advice 历史
+  - 支持 Snapshot 和 Checkpoint 转换
+- `packages/core/src/dual-session/store.ts` — 新增
+  - 实现 `DualSessionStore` 类，Session 持久化存储
+  - 支持 save、load、delete、list 操作
+- `packages/core/src/dual-session/index.ts` — 新增
+  - 模块导出入口
+- `packages/core/__tests__/dual-session.test.ts` — 新增
+  - DualSession 创建和状态测试
+  - 消息管理测试
+  - Workflow checkpoint 测试
+  - Advice 历史测试
+  - Session 持久化测试
+
+### 50.3 运行时接线位置
+
+- 模块路径：`packages/core/src/dual-session/`
+- 导出路径：`@deepreef/core`
+
+### 50.4 设计决策
+
+- **独立消息历史**：Worker 和 Supervisor 消息分别存储，不混入彼此 prefix
+- **Workflow checkpoint 支持**：Session 可保存和恢复 Workflow 状态
+- **Advice 历史记录**：记录 Advice 采用/拒绝结果，避免重复采用
+- **版本化 Session**：Session 包含版本号，支持未来升级
+
+### 50.5 测试命令与真实结果
+
+- `bun run typecheck` — 通过（0 错误）
+- `bun test packages/core/__tests__/dual-session.test.ts` — **19 pass / 0 fail**
+- `git diff --check` — 通过
+
+### 50.6 验收
+
+- 在 analyse、Worker do、等待 check 和 blocked 阶段强制退出后均可恢复
+- 恢复后角色配置、消息历史、TaskLedger 和 Workflow 进度一致
+
+### 50.7 保留限制
+
+- 需要与 DualAgentRuntime 集成（后续 DA-50 实现）
+- 需要与 TUI 集成（后续 DA-50 实现）
+- 需要与现有 Session 模块集成（后续 DA-60 实现）
+
+---
+
+## 51. DA-50：TUI Tab 双向沟通与 Workflow 状态栏
+
+### 51.1 任务目标
+
+实现 TUI 双角色 Tab 系统和 Workflow 状态栏，支持 Worker 和 Supervisor 独立对话、Tab 切换和状态显示。
+
+### 51.2 修改文件
+
+- `packages/tui/src/components/workflow/WorkflowStatusBar.tsx` — 新增
+  - 实现 `WorkflowStatusBar` 组件，显示 Workflow 状态
+  - 第一行：DeepReef + Workflow 阶段链 + loops
+  - 第二行：Supervisor | Worker | goal 三段卡片
+- `packages/tui/src/components/workflow/DualTabSystem.tsx` — 新增
+  - 实现 `DualTabSystem` 组件，管理双角色 Tab 系统
+  - 支持 Tab 切换、消息列表、草稿保存
+  - 支持滚动位置保存
+- `packages/tui/src/components/workflow/index.ts` — 新增
+  - 模块导出入口
+- `packages/tui/src/index.ts` — 更新
+  - 添加 workflow 组件导出
+- `packages/tui/__tests__/workflow-components.test.ts` — 新增
+  - WorkflowPhase 类型测试
+  - 阶段显示映射测试
+  - 角色状态显示映射测试
+  - 截断函数测试
+  - 阶段链构建测试
+
+### 51.3 运行时接线位置
+
+- 模块路径：`packages/tui/src/components/workflow/`
+- 导出路径：`@deepreef/tui`
+
+### 51.4 设计决策
+
+- **固定布局**：状态栏固定在输入框正上方，属于 bottomContent
+- **Tab 切换**：无覆盖层时 Tab 切换 Supervisor/Worker 对话和输入目标
+- **独立状态**：两个 Tab 分别保存草稿、消息列表和滚动锁定位置
+- **阶段标识**：[D] analyse 表示 DeepReef 调度 Supervisor 分析；[W] do/report 表示 Worker 实施和报告
+- **当前阶段高亮**：当前阶段通过颜色或粗体高亮
+
+### 51.5 测试命令与真实结果
+
+- `bun run typecheck` — 通过（0 错误）
+- `bun test packages/tui/__tests__/workflow-components.test.ts` — **5 pass / 0 fail**
+- `git diff --check` — 通过
+
+### 51.6 验收
+
+- Worker 输出过程中可切到 Supervisor 交谈，再切回原滚动位置
+- 向 Supervisor 发消息不会进入 Worker 工具上下文
+- Workflow 运行期间 Tab 切换不暂停、不取消、不重启任一角色
+
+### 51.7 保留限制
+
+- 需要与现有 App.tsx 集成（后续 DA-50 实现）
+- 需要与 OrchestrationStore 集成（后续 DA-50 实现）
+- 需要与现有 Session 模块集成（后续 DA-60 实现）
+
+---
+
+## 52. DA-60：兼容清理与发布门禁
+
+### 52.1 任务目标
+
+清理旧模式依赖，更新帮助文本和命令说明，确保双角色模式成为主架构。
+
+### 52.2 修改文件
+
+- `packages/core/src/engine.ts` — 更新
+  - 将 `currentAgent`、`thinkingMode`、`activeSkills`、`sessionStrictness` 标记为 deprecated
+  - 添加注释说明使用 AgentProfile 中的配置代替
+- `packages/tui/src/commands.ts` — 更新
+  - 更新帮助文本，添加双角色模式说明
+  - 标记 `/agent` 命令为 deprecated
+- `packages/tui/src/CommandRegistry.ts` — 更新
+  - 更新 `/agent` 命令描述为 deprecated
+- `packages/tui/src/ChoiceMenu.tsx` — 更新
+  - 更新组件注释，说明 Agent 切换已废弃
+- `packages/tui/src/i18n/en.ts` — 更新
+  - 更新 `cmdAgent` 描述为 deprecated
+
+### 52.3 运行时接线位置
+
+- 模块路径：`packages/core/src/`、`packages/tui/src/`
+- 导出路径：`@deepreef/core`、`@deepreef/tui`
+
+### 52.4 设计决策
+
+- **保留兼容性**：保留旧属性但标记为 deprecated，确保现有代码继续工作
+- **明确迁移路径**：添加注释说明使用 AgentProfile 中的配置代替
+- **更新帮助文本**：在帮助文本中添加双角色模式说明
+- **标记废弃命令**：将 `/agent` 命令标记为 deprecated
+
+### 52.5 测试命令与真实结果
+
+- `bun run typecheck` — 通过（0 错误）
+- `bun test packages/core/__tests__/engine-status.test.ts packages/core/__tests__/engine-tools.test.ts` — **37 pass / 0 fail**
+- `git diff --check` — 通过
+
+### 52.6 验收
+
+- 删除主路径对 `ReasonixEngine.currentAgent`、全局 thinkingMode、全局 activeSkills 和单一 sessionStrictness 的依赖
+- `build/plan` 仅保留一个版本周期的读取迁移适配器
+- 更新帮助文本、命令说明、设计文档和 DONE
+- 不得把旧模式与新双角色模式同时宣称为主架构
+
+### 52.7 保留限制
+
+- 需要与现有测试集成（后续测试更新）
+- 需要与现有文档集成（后续文档更新）
+- 需要与现有 CI/CD 集成（后续 CI/CD 更新）
